@@ -1,0 +1,37 @@
+{
+  "schema": "researchkb-horizon-weekly-digest/v1",
+  "updated_at": "2026-08-17",
+  "config_id": "horizon-weekly-digest",
+  "schedule_owner": "horizon_weekly_digest",
+  "canonical_task": ".harness/tasks/run-horizon-weekly-digest.ps1",
+  "legacy_task_aliases": [
+    ".harness/tasks/run-horizon-daily-digest.ps1"
+  ],
+  "timezone": "Asia/Shanghai",
+  "output_dir": "03-Resources/RAW/horizon/Weekly",
+  "state_path": ".harness/state/horizon-weekly-digest-state.json",
+  "staging_root": ".harness/staging/horizon-weekly-digest",
+  "horizon_config_path": ".harness/config/horizon-fetch-only.json",
+  "source_registry_path": ".harness/config/source-registry.yaml",
+  "source_ids": [
+    "local-inbox",
+    "horizon-signal-staging"
+  ],
+  "schedule": {
+    "local_time": "12:00",
+    "automatic_task_enabled": true,
+    "frequency": "weekly",
+    "days_of_week": ["Sunday"]
+  },
+  "selection": {
+    "priority_limit": 8,
+    "supporting_limit": 8,
+    "minimum_relevance_score": 4,
+    "minimum_x_signal_score": 7
+  },
+  "output_policy": {
+    "allow_overwrite": false,
+    "require_human_review": true,
+    "formal_knowledge_promotion": false
+  }
+}

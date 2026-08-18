@@ -1,0 +1,70 @@
+{
+  "schema": "researchkb-maintenance-policy/v1",
+  "updated_at": "2026-08-17",
+  "timezone": "Asia/Shanghai",
+  "workspace_root": ".",
+  "scope": {
+    "root_files": [
+      "AGENTS.md"
+    ],
+    "vault_roots": [
+      "00-Ideas",
+      "01-Projects",
+      "02-Areas",
+      "03-Resources",
+      "04-Archive",
+      "05-Skills"
+    ],
+    "harness_roots": [
+      "config",
+      "scripts",
+      "tasks",
+      "state",
+      "runs",
+      "reports",
+      "staging",
+      "tests",
+      "logs",
+      "cache",
+      "inbox",
+      "archive"
+    ],
+    "excluded_relative_paths": [
+      ".obsidian",
+      ".claudian",
+      "_system",
+      "_assets",
+      ".harness/vendor/Horizon",
+      ".git"
+    ]
+  },
+  "disposal": {
+    "mode": "archive-only",
+    "default_unknown_action": "hold",
+    "allow_permanent_delete": false,
+    "allow_formal_vault_write": false
+  },
+  "archive_destinations": {
+    "vault_legacy": "04-Archive/legacy",
+    "harness_generated": ".harness/archive"
+  },
+  "retention": {
+    "report_keep_latest": 12,
+    "preserve_quarterly_reports": true,
+    "preserve_failed_runs": true,
+    "preserve_referenced_staging": true
+  },
+  "legacy_detection": {
+    "candidate_field": "candidate_id",
+    "active_candidate_directories": [
+      "00-Ideas/v3-auto",
+      "03-Resources/v3-auto"
+    ],
+    "superseded_field": "superseded_by",
+    "historical_filename_markers": [
+      "v2",
+      "legacy",
+      "交接"
+    ]
+  }
+}

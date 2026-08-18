@@ -1,0 +1,12 @@
+{
+  "promptDelete": false,
+  "userIgnoreFilters": [
+    ".harness/",
+    ".harnes/",
+    ".claudian/",
+    "_system/",
+    "_assets/",
+    "AGENTS.md",
+    ".gitignore"
+  ]
+}

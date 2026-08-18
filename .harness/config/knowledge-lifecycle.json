@@ -1,0 +1,109 @@
+{
+  "schema": "researchkb-knowledge-lifecycle/v1",
+  "updated_at": "2026-08-17",
+  "workspace_root": ".",
+  "timezone": "Asia/Shanghai",
+  "vault_paths": {
+    "raw": "03-Resources/RAW",
+    "curated": "03-Resources/Curated",
+    "curated_report_root": "03-Resources/_Reports/Knowledge-Iteration",
+    "archive": "04-Archive",
+    "areas": "02-Areas"
+  },
+  "curated_categories": [
+    "AI",
+    "Materials",
+    "Methods",
+    "Tools",
+    "Projects-Discovery",
+    "News & Trends",
+    "Others"
+  ],
+  "harness_paths": {
+    "state": ".harness/state/knowledge-lifecycle-state.json",
+    "staging": ".harness/staging/knowledge-lifecycle",
+    "runs": ".harness/runs",
+    "reports": ".harness/reports",
+    "report_packages": ".harness/reports/Knowledge-Iteration",
+    "report_archive": ".harness/archive/reports"
+  },
+  "compile": {
+    "proposal_root": ".harness/staging/knowledge-lifecycle/curated-proposals",
+    "default_category": "Others",
+    "max_items_per_run": 5,
+    "codex_enabled_by_flag": true,
+    "allow_formal_curated_apply": true,
+    "text_extensions": [
+      ".md",
+      ".markdown",
+      ".txt",
+      ".html",
+      ".htm",
+      ".json",
+      ".ris",
+      ".bib"
+    ]
+  },
+  "usage": {
+    "events_path": ".harness/state/knowledge-usage-events.jsonl",
+    "aggregate_path": ".harness/state/knowledge-usage.json",
+    "window_days": 90,
+    "recent_days": 30,
+    "event_type": "effective_use",
+    "max_per_task_resource": 1,
+    "contexts": [
+      "codex",
+      "project",
+      "output",
+      "skill"
+    ]
+  },
+  "upgrade": {
+    "window_days": 90,
+    "distinct_tasks_threshold": 5,
+    "decision_state_path": ".harness/state/knowledge-upgrade.json",
+    "auto_areas_apply": true
+  },
+  "areas": {
+    "proposal_root": ".harness/staging/knowledge-lifecycle/areas-proposals",
+    "state_path": ".harness/state/knowledge-areas.json",
+    "auto_root": "02-Areas/_Codex-Auto",
+    "managed_marker": "CODEX MANAGED: AREA",
+    "allow_formal_apply": true
+  },
+  "retention": {
+    "raw_max_age_days": 180,
+    "report_keep_latest": 12,
+    "preserve_quarterly_reports": true,
+    "report_space_threshold_bytes": 209715200,
+    "preserve_failed_runs": true,
+    "preserve_referenced_staging": true,
+    "raw_archive_root": "04-Archive/RAW"
+  },
+  "policy": {
+    "default_anomaly_action": "hold",
+    "allow_permanent_delete": false,
+    "auto_curated_promotion": false,
+    "auto_areas_promotion": true,
+    "formal_report_write_enabled": true,
+    "usage_recording_enabled": false
+  },
+  "review": {
+    "timezone": "Asia/Shanghai",
+    "reminder_time": "20:00",
+    "question_batch_size": 5,
+    "trigger": "first-working-day-of-quarter",
+    "proposal_root": ".harness/staging/knowledge-lifecycle/quarterly-review",
+    "state_root": ".harness/state/quarterly-review",
+    "report_root": ".harness/reports/Quarterly-Review",
+    "allow_formal_apply": true,
+    "hard_anomaly_action": "hold"
+  },
+  "curated_required_fields": [
+    "id",
+    "title",
+    "sources",
+    "created",
+    "updated"
+  ]
+}

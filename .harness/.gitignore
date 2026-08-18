@@ -1,0 +1,3 @@
+# Local credentials and mutable run state must never enter version control.
+secrets/horizon.env
+state/horizon-x-budget.json

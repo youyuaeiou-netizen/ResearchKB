@@ -1,0 +1,8 @@
+{
+  "obsidian_vault": "<workspace-root>",
+  "staging_root": "<workspace-root>-Staging",
+  "runtime_root": "<workspace-root>-Runtime",
+  "backup_root": "<external-backup-directory>",
+  "zotero_storage": "<zotero-storage-directory>",
+  "zotero_local_api": "http://127.0.0.1:23119"
+}

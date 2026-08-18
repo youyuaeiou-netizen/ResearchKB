@@ -1,0 +1,16 @@
+{
+  "id": "ai-creator",
+  "name": "AI Creator Radar",
+  "display_names": {"zh": "AI创作者雷达"},
+  "match": "match.md",
+  "analysis": "analysis.md",
+  "enrichment": {
+    "prompt": "enrichment.md",
+    "blocks": [
+      {"id": "summary", "type": "section", "tools": [], "primary": true},
+      {"id": "why_now", "type": "section", "tools": [], "optional": true},
+      {"id": "content_angle", "type": "section", "tools": [], "optional": true},
+      {"id": "community_discussion", "type": "section", "tools": [], "optional": true}
+    ]
+  }
+}

@@ -1,0 +1,56 @@
+# Local state, generated output, and credentials
+.harness/cache/
+.harness/inbox/
+.harness/logs/
+.harness/migration/
+.harness/reports/
+.harness/runs/
+.harness/secrets/*.env
+.harness/staging/
+.harness/state/
+.harness/knowledge-loop-v2-source-manifest.json
+.harness/**/__pycache__/
+.harness/**/*.py[cod]
+.harness/vendor/Horizon/.git/
+.harness/vendor/Horizon/.venv/
+.harness/vendor/Horizon/data/
+.harness/vendor/Horizon/**/__pycache__/
+.harness/vendor/Horizon/.pytest_cache/
+.harness/vendor/Horizon/*
+!.harness/vendor/Horizon/LICENSE
+!.harness/vendor/Horizon/README.md
+!.harness/vendor/Horizon/pyproject.toml
+!.harness/vendor/Horizon/uv.lock
+!.harness/vendor/Horizon/src/
+!.harness/vendor/Horizon/src/**
+!.harness/vendor/Horizon/profiles/
+!.harness/vendor/Horizon/profiles/**
+
+# Machine-specific application state and external integrations
+.claudian/
+.obsidian/plugins/
+.obsidian/workspace.json
+_system/external_paths.json
+_system/index/
+_system/logs/
+_system/reports/
+_system/harvest/
+_system/state.json
+_system/sync/
+
+# Personal knowledge, original materials, and copied assets are intentionally local.
+# The tracked .gitkeep files preserve the six formal knowledge roots in a fresh clone.
+_assets/*
+!_assets/.gitkeep
+00-Ideas/*
+!00-Ideas/.gitkeep
+01-Projects/*
+!01-Projects/.gitkeep
+02-Areas/*
+!02-Areas/.gitkeep
+03-Resources/*
+!03-Resources/.gitkeep
+04-Archive/*
+!04-Archive/.gitkeep
+05-Skills/*
+!05-Skills/.gitkeep
