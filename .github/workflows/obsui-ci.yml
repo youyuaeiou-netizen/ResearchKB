@@ -1,0 +1,35 @@
+name: ObsUI CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/ObsUI/**"
+      - ".github/workflows/obsui-ci.yml"
+  pull_request:
+    paths:
+      - "apps/ObsUI/**"
+      - ".github/workflows/obsui-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/ObsUI
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: apps/ObsUI/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
+      - run: pnpm build
