@@ -26,6 +26,16 @@ pnpm test
 pnpm build
 ```
 
+## 本地启动
+
+Windows 桌面快捷方式 `ObsUI.lnk` 指向 `scripts\start-obsui.ps1`。点击后会在本机启动（或复用）Vite 开发服务，并打开 `http://127.0.0.1:5173/`；它是手动启动入口，不创建计划任务。
+
+也可以在应用目录直接运行：
+
+```powershell
+pwsh -NoLogo -NoProfile -File .\scripts\start-obsui.ps1
+```
+
 ## 路线
 
 v0.2 将增加项目详情和画布；v0.3 增加 ResearchKB/Obsidian 只读适配；v0.4 增加可选的本地 Codex 协作；Web 版稳定后再封装为 Tauri Windows App。
