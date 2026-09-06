@@ -19,7 +19,7 @@ pnpm build
 & 'C:\Program Files\PowerShell\7\pwsh.exe' -NoLogo -NoProfile -File .\scripts\start-obsui.ps1
 ```
 
-普通新克隆已包含 ObsUI 文件，不需要递归子模块命令。旧电脑的 ObsUI 独立 `.git` 仅在旧电脑保留；迁移提交以主仓库版本为准。
+普通新克隆已包含 ObsUI 文件，不需要递归子模块命令。旧电脑的 ObsUI 独立 `.git` 仅在旧电脑保留；迁移提交以主仓库版本为准。`pnpm dev` 和 `start-obsui.ps1` 都会打开 `http://127.0.0.1:5173/?ui=tab-v2`；不要用不带查询参数的根地址作为当前界面入口。
 
 ## 2. 恢复已有使用数据
 

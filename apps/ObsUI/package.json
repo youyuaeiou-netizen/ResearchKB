@@ -9,7 +9,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --open /?ui=tab-v2",
     "build": "tsc --noEmit && vite build",
     "test": "vitest run",
     "preview": "vite preview"

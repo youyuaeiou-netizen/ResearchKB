@@ -24,6 +24,8 @@ pnpm install
 pnpm dev
 ```
 
+`pnpm dev` 会自动打开当前界面入口 `http://127.0.0.1:5173/?ui=tab-v2`。如果浏览器没有自动打开，请手动访问这个完整地址；根地址 `/` 是保留的旧版工作台入口。
+
 验证：
 
 ```powershell
@@ -45,7 +47,7 @@ H.D.D 的本机接口由 Vite 插件提供：
 
 ## 本地启动
 
-Windows 桌面快捷方式 `ObsUI.lnk` 指向 `scripts\start-obsui.ps1`。点击后会在本机启动（或复用）Vite 开发服务，并打开 `http://127.0.0.1:5173/`；它是手动启动入口，不创建计划任务。
+Windows 桌面快捷方式 `ObsUI.lnk` 指向 `scripts\start-obsui.ps1`。点击后会在本机启动（或复用）Vite 开发服务，并打开 `http://127.0.0.1:5173/?ui=tab-v2`；它是手动启动入口，不创建计划任务。
 
 也可以在应用目录直接运行：
 
