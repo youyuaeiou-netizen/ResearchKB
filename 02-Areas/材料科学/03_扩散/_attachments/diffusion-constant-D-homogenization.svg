@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 450" role="img" aria-labelledby="title desc">
+  <title id="title">均匀化扩散的正弦浓度模态</title>
+  <desc id="desc">初始正弦浓度起伏随时间按指数规律衰减，短空间尺度衰减更快。</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#111"/>
+    </marker>
+  </defs>
+  <rect width="760" height="450" fill="white"/>
+  <g stroke="#111" stroke-width="2" fill="none">
+    <line x1="80" y1="245" x2="700" y2="245" marker-end="url(#arrow)"/>
+    <line x1="80" y1="380" x2="80" y2="55" marker-end="url(#arrow)"/>
+    <path d="M100 245 C180 75 270 75 350 245 C430 415 520 415 600 245" stroke-width="3" stroke-dasharray="9 6"/>
+    <path d="M100 245 C180 140 270 140 350 245 C430 350 520 350 600 245" stroke-width="3"/>
+    <path d="M100 245 C180 195 270 195 350 245 C430 295 520 295 600 245" stroke-width="3"/>
+    <line x1="100" y1="245" x2="600" y2="245" stroke-dasharray="5 6"/>
+  </g>
+  <g fill="#111" font-family="sans-serif" font-size="23">
+    <text x="50" y="75">ρ</text>
+    <text x="685" y="280">x</text>
+    <text x="615" y="225">ρ₀</text>
+    <text x="250" y="95">t = 0</text>
+    <text x="290" y="150">t₁</text>
+    <text x="310" y="205">t₂</text>
+    <text x="480" y="420">振幅 ∝ exp(−Dπ²t/λ²)</text>
+    <text x="155" y="330">λ</text>
+  </g>
+</svg>

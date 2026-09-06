@@ -1,0 +1,70 @@
+{
+  "app": "obsui",
+  "exportedAt": "2026-09-05T13:32:19.601Z",
+  "format": "obsui-backup-v1",
+  "state": {
+    "projects": [
+      {
+        "createdAt": "2026-08-19T09:46:30.478Z",
+        "description": "示例项目：用于体验项目、任务和资料之间的连接。",
+        "id": "project-demo-research",
+        "kind": "research",
+        "status": "active",
+        "tags": ["研究"],
+        "title": "研究课题规划（示例）",
+        "updatedAt": "2026-08-19T09:46:30.478Z"
+      },
+      {
+        "createdAt": "2026-08-19T09:46:30.478Z",
+        "description": "示例项目可以在设置中清空后替换为自己的内容。",
+        "id": "project-demo-course",
+        "kind": "course",
+        "status": "active",
+        "tags": ["课程"],
+        "title": "本学期课程计划（示例）",
+        "updatedAt": "2026-08-19T09:46:30.478Z"
+      }
+    ],
+    "recycleBin": [],
+    "resources": [
+      {
+        "createdAt": "2026-08-19T09:46:30.478Z",
+        "id": "resource-demo-1",
+        "kind": "link",
+        "location": "https://example.com/obsui-demo",
+        "projectId": "project-demo-research",
+        "tags": ["方法"],
+        "title": "把一个问题拆成可验证的假设"
+      }
+    ],
+    "schemaVersion": 1,
+    "targetLastOpenedMonth": "2026-09",
+    "tasks": [
+      {
+        "completedAt": null,
+        "createdAt": "2026-09-03T13:47:17.944Z",
+        "dueDate": "2026-09-05",
+        "folderPath": "",
+        "id": "task-aa4edbc6-6a72-4fb5-ac96-90c0978ed233",
+        "priority": 4,
+        "projectId": null,
+        "status": "active",
+        "title": "选课结束",
+        "updatedAt": "2026-09-03T13:47:17.944Z"
+      },
+      {
+        "completedAt": null,
+        "createdAt": "2026-09-03T03:20:22.433Z",
+        "dueDate": "2026-09-08",
+        "folderPath": "",
+        "id": "task-a80c9134-48af-4a58-88a8-bb01b5e899c3",
+        "priority": 3,
+        "projectId": null,
+        "status": "active",
+        "title": "电信维修,上午",
+        "updatedAt": "2026-09-03T15:35:36.421Z"
+      }
+    ],
+    "updatedAt": "2026-09-03T15:35:36.421Z"
+  }
+}

@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "source": "zotero-local-api",
+  "library_version": 633,
+  "last_successful_sync": "2026-08-08T12:47:55+08:00",
+  "last_run_id": "zotero-sync-2026-08-08T1247550800",
+  "items": {
+    "PSGJKM6F": {
+      "zotero_version": 353,
+      "note_path": "F:\\ResearchKB\\03-Resources\\Advancements in machine learning for material design and process optimization in the field of additive manufacturing.md",
+      "source_status": "present",
+      "managed_hash": "9f8a71cb079ea4d6c4a6034705021bbce98c749c84116e10c835f21ab311cacc",
+      "manual_hash": "59ca44b6a251be2493ea15a60ae5851eee4521ffc87c05ca675ebeba7111c412"
+    },
+    "5X78I8ZK": {
+      "zotero_version": 353,
+      "note_path": "F:\\ResearchKB\\03-Resources\\Physics-Informed Machine Learning for metal additive manufacturing.md",
+      "source_status": "present",
+      "managed_hash": "7ca376152d71b55e214f92b47e99053751c69905f13d25ebed8c4532c0b6f3e8",
+      "manual_hash": "ea64195a09afe43fe37825e2416ef27530d42f51db3c657e49d414619b192cb0"
+    },
+    "QUS9Q6YV": {
+      "zotero_version": 545,
+      "note_path": "F:\\ResearchKB\\03-Resources\\Monitoring and prediction of porosity in laser powder bed fusion using physics-informed meltpool signatures and machine learning.md",
+      "source_status": "present",
+      "managed_hash": "3b11bedad343b5125a77ae0bedde4c2b880d3d207b3f8db799e9fd875632909a",
+      "manual_hash": "664bb6c1e3e34addaf2243ed40b01b797130c09f211c56efa6dd4f7b972f7917"
+    },
+    "46W52MGH": {
+      "zotero_version": 383,
+      "note_path": "F:\\ResearchKB\\03-Resources\\An alloy-agnostic machine learning framework for process mapping in laser powder bed fusion.md",
+      "source_status": "present",
+      "managed_hash": "c4d9bbfc675d89f1f6cf5ab424140dc0cde3593618ee55aef4135041feff010e",
+      "manual_hash": "a549261c55ca9cdb8bbdc0719355ed2b25592565b4f92d69fefaef1af475c5b8"
+    },
+    "JQWD3K4D": {
+      "zotero_version": 373,
+      "note_path": "F:\\ResearchKB\\03-Resources\\Data-driven density prediction of AlSi10Mg parts produced by laser powder bed fusion using machine learning and finite element simulation.md",
+      "source_status": "present",
+      "managed_hash": "6ab6f5df97bd0a96cbd7a571ab7565389eebdd9d9d137b6f1395dd12cd5c8ccb",
+      "manual_hash": "16899f45af7150c0b9f82be23463773a5df5b5c8de66aba6a3c353ae71108ac2"
+    },
+    "TY8C42NF": {
+      "zotero_version": 373,
+      "note_path": "F:\\ResearchKB\\03-Resources\\Defect detection in laser-based powder bed fusion process using machine learning classification methods.md",
+      "source_status": "present",
+      "managed_hash": "b73fad37d0300407045e83a9d32abf0befc7425bcb7163358ee5cad8fb8cad69",
+      "manual_hash": "036ad6308b54c5fd4a318715d16fbc5991020250d6ba64b56f9c4459d1d9da6c"
+    }
+  }
+}

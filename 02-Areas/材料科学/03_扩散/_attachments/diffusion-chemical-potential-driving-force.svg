@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="600" viewBox="0 0 1200 600">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#0f766e"/>
+    </marker>
+  </defs>
+  <rect width="1200" height="600" fill="#ffffff"/>
+  <text x="600" y="40" text-anchor="middle" font-family="sans-serif" font-size="28" font-weight="700" fill="#0f172a">化学势梯度决定扩散方向</text>
+  <text x="600" y="74" text-anchor="middle" font-family="sans-serif" font-size="18" fill="#475569">定性示意；通量由 −∂μ/∂x 决定，浓度梯度本身不总能决定方向</text>
+
+  <rect x="45" y="105" width="530" height="420" rx="14" fill="#f0fdf4" stroke="#86efac" stroke-width="2"/>
+  <rect x="625" y="105" width="530" height="420" rx="14" fill="#fff7ed" stroke="#fdba74" stroke-width="2"/>
+  <text x="310" y="145" text-anchor="middle" font-family="sans-serif" font-size="25" font-weight="700" fill="#166534">下坡扩散</text>
+  <text x="890" y="145" text-anchor="middle" font-family="sans-serif" font-size="25" font-weight="700" fill="#9a3412">上坡扩散（浓度表示）</text>
+
+  <line x1="120" y1="245" x2="510" y2="245" stroke="#334155" stroke-width="2"/>
+  <line x1="120" y1="245" x2="120" y2="185" stroke="#334155" stroke-width="2"/>
+  <path d="M135 195 C220 205 315 225 495 240" fill="none" stroke="#2563eb" stroke-width="4"/>
+  <text x="135" y="180" font-family="sans-serif" font-size="19" fill="#1d4ed8">高 C</text>
+  <text x="475" y="270" font-family="sans-serif" font-size="19" fill="#1d4ed8">低 C</text>
+  <text x="310" y="296" text-anchor="middle" font-family="sans-serif" font-size="18" fill="#334155">C 随 x 降低，μ 也随 x 降低</text>
+  <line x1="155" y1="355" x2="470" y2="355" stroke="#0f766e" stroke-width="5" marker-end="url(#arrow)"/>
+  <text x="310" y="392" text-anchor="middle" font-family="sans-serif" font-size="20" fill="#115e59">J：高 μ → 低 μ</text>
+  <text x="310" y="450" text-anchor="middle" font-family="sans-serif" font-size="19" fill="#166534">通常表现为高浓度 → 低浓度</text>
+
+  <line x1="700" y1="245" x2="1090" y2="245" stroke="#334155" stroke-width="2"/>
+  <line x1="700" y1="245" x2="700" y2="185" stroke="#334155" stroke-width="2"/>
+  <path d="M715 240 C805 228 900 205 1075 195" fill="none" stroke="#dc2626" stroke-width="4"/>
+  <text x="715" y="270" font-family="sans-serif" font-size="19" fill="#b91c1c">低 C</text>
+  <text x="1045" y="180" font-family="sans-serif" font-size="19" fill="#b91c1c">高 C</text>
+  <text x="895" y="296" text-anchor="middle" font-family="sans-serif" font-size="18" fill="#334155">C 随 x 升高，但 μ 随 x 降低</text>
+  <line x1="735" y1="355" x2="1050" y2="355" stroke="#0f766e" stroke-width="5" marker-end="url(#arrow)"/>
+  <text x="890" y="392" text-anchor="middle" font-family="sans-serif" font-size="20" fill="#115e59">J：仍沿 −∂μ/∂x</text>
+  <text x="890" y="450" text-anchor="middle" font-family="sans-serif" font-size="19" fill="#9a3412">可出现低浓度 → 高浓度</text>
+</svg>

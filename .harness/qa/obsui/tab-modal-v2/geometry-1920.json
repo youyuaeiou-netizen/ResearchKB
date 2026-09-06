@@ -1,0 +1,71 @@
+[
+  {
+    "close": {
+      "height": 83,
+      "width": 84,
+      "x": 1765,
+      "y": 86
+    },
+    "dialog": {
+      "height": 910,
+      "width": 1780,
+      "x": 70,
+      "y": 85
+    },
+    "label": "本机",
+    "oldNodes": 0,
+    "selected": "本机",
+    "track": {
+      "height": 83,
+      "width": 1464,
+      "x": 301,
+      "y": 86
+    }
+  },
+  {
+    "close": {
+      "height": 83,
+      "width": 84,
+      "x": 1765,
+      "y": 86
+    },
+    "dialog": {
+      "height": 910,
+      "width": 1780,
+      "x": 70,
+      "y": 85
+    },
+    "label": "目标",
+    "oldNodes": 0,
+    "selected": "目标",
+    "track": {
+      "height": 83,
+      "width": 1464,
+      "x": 301,
+      "y": 86
+    }
+  },
+  {
+    "close": {
+      "height": 83,
+      "width": 84,
+      "x": 1765,
+      "y": 86
+    },
+    "dialog": {
+      "height": 910,
+      "width": 1780,
+      "x": 70,
+      "y": 85
+    },
+    "label": "H.D.D",
+    "oldNodes": 0,
+    "selected": "H.D.D",
+    "track": {
+      "height": 83,
+      "width": 1464,
+      "x": 301,
+      "y": 86
+    }
+  }
+]

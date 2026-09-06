@@ -29,8 +29,7 @@ Codex 工作区根目录是本仓库根（当前为 `F:\ResearchKB`）。本文�
 ## 操作
 
 - daily：由 `run-v3-daily.ps1` 执行 v3 来源收集、去重、资源卡和候选 dry-run；不再生成 Horizon 日报。
-- Horizon weekly digest：唯一正式入口为 `tasks\run-horizon-weekly-digest.ps1`，运行窗口为 Asia/Shanghai 周日 12:00–12:29；可供知识库处理的周报输出固定为 `03-Resources\RAW\horizon\Weekly`。Horizon 机器原始包仍隔离在 `.harness\staging`。
-- `tasks\run-horizon-daily-digest.ps1` 仅保留为兼容别名，转发到 Horizon weekly digest，并遵守同一时间窗口。
+- Horizon weekly digest：唯一正式入口为 `tasks\run-horizon-weekly-digest.ps1`，运行窗口为 Asia/Shanghai 周日 12:00–12:29；可供知识库处理的周报输出固定为 `03-Resources\RAW\horizon\Weekly`。Horizon 机器原始包仍隔离在 `.harness\staging`；不再保留 Daily 兼容入口或 Daily 状态文件。
 - weekly：由 `run-v3-weekly.ps1` 执行 v3 汇总、冲突/孤立/陈旧/缺口检查和周报，计划时间为周日 20:00。
 - Curated compile：由 `run-knowledge-compile-weekly.ps1` 扫描 `03-Resources/RAW`，按内容 SHA-256 生成稳定 Curated ID、来源追踪和待审阅提案；默认只写入 `.harness/staging/knowledge-lifecycle/curated-proposals`。显式 `-Codex` 才复用现有只读 v3 Codex 编译器；只有显式 `-Codex -Apply`（等价于 `compile --codex --apply`）才尝试写入正式 `03-Resources/Curated`，且不覆盖已有卡片，异常保持 `hold`。
 - 周度闭环：由 `run-researchkb-weekly.ps1 -Apply` 按“现有 Curated 编译 → Knowledge Iteration → usage 聚合 → 90 天升级判断 → Curated 到 Areas”顺序编排现有入口；不新增第二套 Curated 去重或来源规则。手动不带 `-Apply` 时所有步骤均为 no-write。
@@ -41,5 +40,15 @@ Codex 工作区根目录是本仓库根（当前为 `F:\ResearchKB`）。本文�
 - 季度 Review：由 `run-quarterly-review.ps1` 和 `knowledge_review.py` 管理 `prepare → start → checkpoint → finalize → apply` 状态机。prepare 只生成上一季度输入包并提醒；用户回复“开始 Review”后每批询问 3–5 个问题，回答可中断恢复。日常升级不等待 Review；阈值、归档和非日常结构调整必须经过精确确认，永不永久删除。
 - query：按优先级读取索引和 Markdown，生成带回链的检索报告；必要时可生成待审 Query 候选。
 - lint：检查候选 Schema、来源锚点、重复身份、状态门槛和 Wiki 链接。
+
+## 当前交接状态（2026-08-19，Asia/Shanghai）
+
+- 当前运行交接以本文件为准；`F:\ResearchKB` 是唯一项目工作区，`.harness` 是唯一自动化执行层。
+- Horizon 只保留周报入口：`run-horizon-weekly-digest.ps1`。旧 Daily 配置、Daily 状态文件和 Daily 兼容 wrapper 已移除；维护审计不再检查它们。
+- Codex 周度自动化任务为 `researchkb`；Horizon 周报任务为 `horizon`；两者职责独立，均指向本项目，不写入人工 Areas。
+- 季度 Review 只保留一个 Codex 自动化任务：`researchkb-review`，状态为 ACTIVE，使用项目级定时任务。每次运行新建对话，不绑定当前聊天；问答中断和跨运行恢复依靠 `.harness\state`、`.harness\staging` 和 `.harness\reports`。
+- 季度 Review 流程仍为 `prepare → start → checkpoint → finalize → apply`；`apply` 必须收到精确确认“确认执行季度 Review 草案”，不得永久删除。
+- 最近核验：维护审计扫描 614 个文件、`finding_count = 0`；Horizon 周报相关 23 项测试和维护审计 8 项测试全部通过。未运行网络采集或 Horizon 全量测试。
+- `00-Ideas` 下同名交接卡是历史/候选资料，可能保留旧外部路径和旧状态；不得将其当作当前运行规则，也不在本阶段改写。
 
 所有运行结果都写入 `.harness`；只有周度任务明确 `-Apply` 才执行受控 Curated/Areas/Reports 写入，手动入口默认 no-write。Review 的 apply 另需用户明确确认。

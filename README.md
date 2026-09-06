@@ -1,8 +1,10 @@
 # ResearchKB
 
-参考卡帕西思路，自己设计的obsidian知识库。
+参考卡帕西思路设计的材料科研 Obsidian 知识库框架。
 
 面向材料科研的本地优先、证据可追溯知识库框架。Codex 负责受控采集、候选编译、检索和检查；Obsidian 用于阅读与人工审阅；Zotero 始终是书目、PDF 和引用关系的权威源。
+
+当前开发版本为 `v0.1.0-dev`。首个自动学习主线是“相图 → 凝固 → 相变”：系统将来源完整的 Curated 内容写入隔离的 `02-Areas/_Codex-Auto/基础学习`，并生成关系图。自动生成不等于人工核验；自动卡永不标记为 `verified`。
 
 ## 本仓库包含的内容
 
@@ -12,7 +14,9 @@
 - 可共享的 Obsidian 基础设置：`.obsidian/*.json`。
 - 运行 GitHub/X 信号桥接器所需的 MIT 许可 Horizon 源码快照与依赖锁定文件。
 
-为保护隐私、版权与可复现性，仓库**不包含**个人笔记、原始资料、PDF、Zotero 数据、运行日志/缓存/状态、凭据、Obsidian 插件二进制或机器专属设置。六个正式知识目录中的 `.gitkeep` 仅保留目录结构。
+本仓库按所有者的跨电脑迁移要求，包含个人知识目录及其附件、ObsUI 源码与界面资产、已导出的 ObsUI 使用数据和自动化状态。仓库公开可见，提交前须检查凭据与本机配置；运行日志、缓存、依赖、Obsidian 插件二进制及工作区外的 Zotero/PDF 数据不上传。
+
+**换电脑恢复完整工作项目：** 请按 [Windows 新电脑迁移指南](docs/migration-windows.md) 安装依赖、导入 ObsUI 使用数据并配置本机凭据。仅 `git clone` 不会自动恢复浏览器数据库，也不会安装外部软件。
 
 ## 克隆后开始
 
@@ -29,6 +33,27 @@ codex
 ```powershell
 & 'C:\Program Files\PowerShell\7\pwsh.exe' -NoLogo -NoProfile -File .harness\tasks\run-knowledge-lifecycle-weekly.ps1 -NoWrite
 ```
+
+完整的首次离线运行见 [中文快速开始](docs/quickstart-zh.md)，架构和自动流转边界见 [架构说明](docs/architecture.md)。
+
+## 自动化边界
+
+- 不新增计划任务。现有 Horizon 周报任务在周报成功后调用既有 `run-researchkb-weekly.ps1`；该入口依次运行 Curated、基础学习、usage、upgrade 和 Areas 阶段。
+- 所有 Horizon 四类动态均可进入候选；不能映射至当前学习主题的内容保留为“扩展探索”，不当作基础科学事实。
+- 自动写入仅限 `CODEX MANAGED` 区域和 `02-Areas/_Codex-Auto`；不会覆盖既有人工 Areas、Zotero、PDF 或 `.obsidian`。
+- 网络抓取需要有效本地凭据，并受当前 Horizon 配置的预算闸门约束；CI 只使用本地夹具，不发起付费采集。
+
+## 开发与测试
+
+在 Windows PowerShell 7 中执行：
+
+```powershell
+python -m pip install -r .harness\requirements-test.txt
+python -m unittest discover -s .harness\tests -v
+& 'C:\Program Files\PowerShell\7\pwsh.exe' -NoLogo -NoProfile -File .harness\tasks\run-researchkb-weekly.ps1 -NoWrite
+```
+
+使用分支和 Pull Request 提交更改；贡献方式、安全报告和支持渠道见 [CONTRIBUTING.md](CONTRIBUTING.md)、[SECURITY.md](SECURITY.md) 与 [SUPPORT.md](SUPPORT.md)。
 
 ## 可选本地集成
 

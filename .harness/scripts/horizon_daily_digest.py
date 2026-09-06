@@ -28,7 +28,7 @@ import horizon_fetch_only
 import researchkb_v3 as v3
 
 
-DEFAULT_CONFIG = HARNESS_ROOT / "config" / "horizon-daily-digest.json"
+DEFAULT_CONFIG = HARNESS_ROOT / "config" / "horizon-weekly-digest.json"
 EXPECTED_OUTPUT_DIR = (WORKSPACE_ROOT / "03-Resources" / "RAW" / "horizon" / "Weekly").resolve()
 WEEKLY_DIGEST_SCHEMA = "researchkb-horizon-weekly-digest/v1"
 WEEKLY_STATE_SCHEMA = "researchkb-horizon-weekly-digest-state/v1"

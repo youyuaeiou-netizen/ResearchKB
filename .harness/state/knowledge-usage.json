@@ -1,0 +1,14 @@
+{
+  "schema": "researchkb-usage-aggregate/v1",
+  "generated_at": "2026-08-23T20:03:43+08:00",
+  "event_type": "effective_use",
+  "recent_days": 30,
+  "window_days": 90,
+  "status": "OK_EMPTY",
+  "total_uses": 0,
+  "uses_30d": 0,
+  "uses_90d": 0,
+  "distinct_tasks": 0,
+  "duplicate_events_ignored": 0,
+  "resources": {}
+}

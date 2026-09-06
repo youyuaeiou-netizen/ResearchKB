@@ -517,69 +517,11 @@ def find_references(records: list[dict[str, Any]], texts: dict[str, str]) -> Non
             target["reason"] += "；发现引用，必须先生成并验证链接映射"
 
 
-def _resolve_workspace_path(root: Path, value: str) -> Path:
-    candidate = Path(value)
-    if candidate.is_absolute():
-        return candidate.resolve()
-    return (root / candidate).resolve()
-
-
-def collect_findings(root: Path, records: list[dict[str, Any]], texts: dict[str, str]) -> list[dict[str, Any]]:
+def collect_findings(records: list[dict[str, Any]], texts: dict[str, str]) -> list[dict[str, Any]]:
     findings: list[dict[str, Any]] = []
-    by_path = {record["path"]: record for record in records}
-
-    state_rel = ".harness/state/horizon-daily-digest-state.json"
-    state_text = texts.get(state_rel)
-    state = parse_json_text(state_text)
-    if state:
-        output_value = state.get("last_output_path")
-        if output_value:
-            output_path = _resolve_workspace_path(root, str(output_value))
-            if not output_path.exists():
-                findings.append(
-                    {
-                        "kind": "stale-state-output",
-                        "classification": "conflict",
-                        "action": "hold",
-                        "path": state_rel,
-                        "related_paths": [normalize_rel(str(output_value))],
-                        "reason": "Daily state 指向不存在的输出路径；在确认活动读取者前不归档或改写状态",
-                    }
-                )
-                if state_rel in by_path:
-                    by_path[state_rel].update(
-                        classification="conflict",
-                        action="hold",
-                        recommended_action="hold-until-reader-audit",
-                        reason="state 的 last_output_path 不存在；不能推断其已废弃",
-                    )
-
-    daily_task = ".harness/tasks/run-horizon-daily-digest.ps1"
-    weekly_task = ".harness/tasks/run-horizon-weekly-digest.ps1"
-    daily_text = texts.get(daily_task, "")
-    weekly_text = texts.get(weekly_task, "")
-    if "horizon_daily_digest.py" in daily_text and "horizon_daily_digest.py" in weekly_text:
-        findings.append(
-            {
-                "kind": "duplicate-horizon-wrapper",
-                "classification": "rule-conflict",
-                "action": "hold",
-                "path": daily_task,
-                "related_paths": [weekly_task, ".harness/scripts/horizon_daily_digest.py"],
-                "reason": "Daily 与 Weekly wrapper 调用同一实现；先核对调度者和输出语义，再统一入口",
-            }
-        )
-        for path in (daily_task, weekly_task):
-            if path in by_path:
-                by_path[path].update(
-                    classification="rule-conflict",
-                    action="hold",
-                    recommended_action="normalize-after-scheduler-review",
-                    reason="Daily/Weekly wrapper 均调用 horizon_daily_digest.py；保留兼容入口，暂不删除",
-                )
 
     registry = parse_json_text(texts.get(".harness/config/source-registry.yaml"))
-    digest_config = parse_json_text(texts.get(".harness/config/horizon-daily-digest.json"))
+    digest_config = parse_json_text(texts.get(".harness/config/horizon-weekly-digest.json"))
     schedules = (registry or {}).get("schedules", {})
     registry_schedule = str(
         schedules.get("horizon_weekly_digest")
@@ -595,7 +537,7 @@ def collect_findings(root: Path, records: list[dict[str, Any]], texts: dict[str,
                 "classification": "rule-conflict",
                 "action": "hold",
                 "path": ".harness/config/source-registry.yaml",
-                "related_paths": [".harness/config/horizon-daily-digest.json"],
+                "related_paths": [".harness/config/horizon-weekly-digest.json"],
                 "reason": f"source registry horizon_weekly_digest={registry_schedule!r}，Horizon digest={digest_day} {digest_time!r}；需统一 Horizon digest 的活动时间",
             }
         )
@@ -638,7 +580,7 @@ def audit_workspace(root: Path, policy: dict[str, Any]) -> dict[str, Any]:
     classify_legacy_records(records, texts, policy)
     classify_generated_records(root, records, texts, policy)
     find_references(records, texts)
-    findings = collect_findings(root, records, texts)
+    findings = collect_findings(records, texts)
 
     counts = Counter(record["classification"] for record in records)
     action_counts = Counter(record["action"] for record in records)

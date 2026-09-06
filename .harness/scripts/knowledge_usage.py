@@ -171,6 +171,8 @@ def make_event(task_id: str, resource_id: str, context: str, config: dict[str, A
 
 
 def record_usage(root: Path, config: dict[str, Any], task_id: str, resource_id: str, context: str) -> dict[str, Any]:
+    if config.get("policy", {}).get("usage_recording_enabled") is not True:
+        raise UsageError("配置未启用 usage 记录")
     lifecycle = load_lifecycle_module()
     paths = usage_paths(lifecycle, root, config)
     task_id = normalize_identifier(task_id, "task_id")

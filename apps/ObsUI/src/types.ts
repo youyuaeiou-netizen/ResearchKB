@@ -1,7 +1,7 @@
 export type ProjectKind = "course" | "research" | "personal";
 export type ProjectStatus = "active" | "paused" | "completed";
-export type TaskStatus = "todo" | "doing" | "done";
-export type Priority = "low" | "medium" | "high";
+export type TaskStatus = "active" | "completed";
+export type Priority = 1 | 2 | 3 | 4 | 5;
 export type ResourceKind = "link" | "file" | "note";
 
 export type Project = {
@@ -19,11 +19,13 @@ export type Task = {
   id: string;
   title: string;
   projectId: string | null;
-  dueDate: string | null;
+  dueDate: string;
   status: TaskStatus;
   priority: Priority;
+  folderPath: string;
   createdAt: string;
   updatedAt: string;
+  completedAt: string | null;
 };
 
 export type Resource = {
@@ -46,6 +48,7 @@ export type RecycledItem = {
 export type AppState = {
   schemaVersion: 1;
   updatedAt: string;
+  targetLastOpenedMonth: string;
   projects: Project[];
   tasks: Task[];
   resources: Resource[];

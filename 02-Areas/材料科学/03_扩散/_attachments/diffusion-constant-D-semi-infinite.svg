@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 450" role="img" aria-labelledby="title desc">
+  <title id="title">半无限扩散体的固定表面浓度解</title>
+  <desc id="desc">表面浓度保持为 rho_s，半无限基体初始浓度为 rho_0，不同时刻浓度向内部扩展。</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#111"/>
+    </marker>
+  </defs>
+  <rect width="760" height="450" fill="white"/>
+  <g stroke="#111" stroke-width="2" fill="none">
+    <line x1="105" y1="365" x2="700" y2="365" marker-end="url(#arrow)"/>
+    <line x1="105" y1="365" x2="105" y2="55" marker-end="url(#arrow)"/>
+    <line x1="105" y1="105" x2="690" y2="105" stroke-dasharray="8 6"/>
+    <path d="M105 105 C150 120 180 160 225 205 C270 250 315 285 380 315 C470 350 570 360 690 360" stroke-width="3"/>
+    <path d="M105 105 C155 150 205 205 270 255 C345 310 435 345 540 358 C600 363 650 364 690 364" stroke-width="3"/>
+    <line x1="105" y1="365" x2="105" y2="105" stroke-dasharray="6 6"/>
+  </g>
+  <g fill="#111" font-family="sans-serif" font-size="23">
+    <text x="70" y="72">ρ</text>
+    <text x="685" y="399">x</text>
+    <text x="55" y="98">ρ_s</text>
+    <text x="55" y="358">ρ₀</text>
+    <text x="120" y="95">x = 0，固定表面</text>
+    <text x="470" y="285">t₁</text>
+    <text x="590" y="340">t₂</text>
+    <text x="430" y="420">t 增大，扩散层向内部推进</text>
+  </g>
+</svg>

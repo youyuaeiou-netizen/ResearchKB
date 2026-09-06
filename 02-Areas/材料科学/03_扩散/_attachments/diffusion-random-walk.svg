@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 450" role="img" aria-labelledby="title desc">
+  <title id="title">扩散原子的无规则行走</title>
+  <desc id="desc">原子沿随机方向连续跳跃，均方位移尺度随时间平方根增长。</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#111"/>
+    </marker>
+  </defs>
+  <rect width="760" height="450" fill="white"/>
+  <g stroke="#111" stroke-width="2" fill="none">
+    <line x1="380" y1="330" x2="690" y2="330" marker-end="url(#arrow)"/>
+    <line x1="380" y1="330" x2="380" y2="60" marker-end="url(#arrow)"/>
+    <circle cx="380" cy="330" r="115" stroke-dasharray="8 7"/>
+    <polyline points="380,330 420,295 390,248 450,215 430,165 480,135 520,160 550,110 600,125 625,80" stroke-width="4" marker-end="url(#arrow)"/>
+    <line x1="380" y1="330" x2="625" y2="80" stroke-dasharray="7 6"/>
+  </g>
+  <g fill="#111" font-family="sans-serif" font-size="23">
+    <text x="350" y="360">原点</text>
+    <text x="635" y="72">Rₙ</text>
+    <text x="500" y="305">R²ₙ = 6Dt</text>
+    <text x="430" y="80">随机跳跃路径</text>
+    <text x="455" y="415">Rₙ：均方位移尺度</text>
+  </g>
+</svg>

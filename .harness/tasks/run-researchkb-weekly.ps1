@@ -37,6 +37,7 @@ $readOnly = -not $Apply
 if ($readOnly) {
     # Manual invocation is read-only by default, including staging/state files.
     Invoke-ResearchKBStep -Name 'compile (no-write)' -TaskPath (Join-Path $tasksRoot 'run-knowledge-compile-weekly.ps1') -Arguments @('-NoWrite')
+    Invoke-ResearchKBStep -Name 'foundation learning (no-write)' -TaskPath (Join-Path $tasksRoot 'run-knowledge-foundation-weekly.ps1') -Arguments @('-NoWrite')
     Invoke-ResearchKBStep -Name 'maintenance (no-write)' -TaskPath (Join-Path $tasksRoot 'run-knowledge-maintenance-weekly.ps1') -Arguments @('-NoWrite')
     Invoke-ResearchKBStep -Name 'usage (no-write)' -TaskPath (Join-Path $tasksRoot 'run-knowledge-usage-weekly.ps1') -Arguments @('-NoWrite')
     Invoke-ResearchKBStep -Name 'upgrade (no-write)' -TaskPath (Join-Path $tasksRoot 'run-knowledge-upgrade-weekly.ps1') -Arguments @('-NoWrite')
@@ -48,6 +49,7 @@ if ($readOnly) {
 # before maintenance because maintenance reports the latest Curated result;
 # it reuses the existing v3/Codex compiler and does not create a second rule.
 Invoke-ResearchKBStep -Name 'compile (Codex + apply)' -TaskPath (Join-Path $tasksRoot 'run-knowledge-compile-weekly.ps1') -Arguments @('-Codex', '-Apply')
+Invoke-ResearchKBStep -Name 'foundation learning (apply)' -TaskPath (Join-Path $tasksRoot 'run-knowledge-foundation-weekly.ps1') -Arguments @('-Apply')
 Invoke-ResearchKBStep -Name 'maintenance (apply)' -TaskPath (Join-Path $tasksRoot 'run-knowledge-maintenance-weekly.ps1') -Arguments @('-Apply')
 Invoke-ResearchKBStep -Name 'usage aggregate' -TaskPath (Join-Path $tasksRoot 'run-knowledge-usage-weekly.ps1') -Arguments @()
 Invoke-ResearchKBStep -Name '90-day upgrade' -TaskPath (Join-Path $tasksRoot 'run-knowledge-upgrade-weekly.ps1') -Arguments @()

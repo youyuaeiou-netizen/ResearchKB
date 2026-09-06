@@ -7,7 +7,6 @@
 .harness/runs/
 .harness/secrets/*.env
 .harness/staging/
-.harness/state/
 .harness/knowledge-loop-v2-source-manifest.json
 .harness/**/__pycache__/
 .harness/**/*.py[cod]
@@ -35,22 +34,31 @@ _system/index/
 _system/logs/
 _system/reports/
 _system/harvest/
-_system/state.json
-_system/sync/
 
-# Personal knowledge, original materials, and copied assets are intentionally local.
-# The tracked .gitkeep files preserve the six formal knowledge roots in a fresh clone.
-_assets/*
-!_assets/.gitkeep
-00-Ideas/*
-!00-Ideas/.gitkeep
-01-Projects/*
-!01-Projects/.gitkeep
-02-Areas/*
-!02-Areas/.gitkeep
-03-Resources/*
-!03-Resources/.gitkeep
-04-Archive/*
-!04-Archive/.gitkeep
-05-Skills/*
-!05-Skills/.gitkeep
+# Knowledge, ObsUI source, and reviewed application state are synchronized.
+# Credentials, machine configuration, dependencies, and generated files stay local.
+**/.git/
+**/node_modules/
+**/dist/
+**/.vite/
+**/coverage/
+**/__pycache__/
+**/.pytest_cache/
+**/*.py[cod]
+**/.env
+**/.env.*
+**/*.env
+!**/.env.example
+!**/*.env.example
+**/*.local
+**/*.pem
+**/*.key
+**/*.p12
+**/*.pfx
+**/id_rsa*
+**/id_ed25519*
+**/auth.json
+**/credentials.json
+**/.npmrc
+**/.pypirc
+**/*.log

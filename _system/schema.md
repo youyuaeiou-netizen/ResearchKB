@@ -3,9 +3,11 @@
 - 正式知识类型：`material-knowledge`、`literature`、`experiment`、必要的 `concept`。
 - `primary_domain` 是材料知识卡唯一的物理归属；路径必须与其一致。
 - `domain`、`material_system`、`process`、`microstructure`、`property`、`mechanism`、`characterization` 必须为列表。
-- `knowledge_status`：`captured → screened → evidence-extracted → synthesized → verified → reusable → archived`。
+- 人工核验路径的 `knowledge_status`：`captured → screened → evidence-extracted → synthesized → verified → reusable → archived`。
+- 自动路径可使用 `auto-reusable`：它表示来源可追溯、通过自动规则并可在系统管理区检索；它不表示人工核验或科学事实已被证明。
 - `review_status`：`pending`、`in-review`、`approved`、`rejected`。
 - `verified` 要求人工审核、来源锚点和 `review_status: approved`。
+- 自动生成卡必须保留 `review_status: pending`、`managed_by: researchkb`、`derived_from`、来源与内容哈希；只允许写入 `02-Areas/_Codex-Auto` 的受管区域。
 - 文献父条目 key 与 PDF 附件 key 分离；附件逐项写入受管表格。
 - 日志、报告、diff、缓存和备份不得进入活动 Vault。
 

@@ -1,0 +1,1319 @@
+{
+  "schema": "researchkb-quarterly-review/v1",
+  "quarter": "2026-Q2",
+  "period": {
+    "start": "2026-04-01",
+    "end": "2026-06-30"
+  },
+  "status": "pending_start",
+  "prepared_at": "2026-08-17T17:20:19+08:00",
+  "staging_root": ".harness/staging/knowledge-lifecycle/quarterly-review/2026-Q2",
+  "report_root": ".harness/reports/Quarterly-Review/2026-Q2",
+  "source_snapshot": {
+    "generated_at": "2026-08-17T17:20:19+08:00",
+    "workspace_root": "F:\\ResearchKB",
+    "scan": {
+      "status": "OK_EMPTY",
+      "raw_count": 0,
+      "curated_count": 0,
+      "curated_missing_fields": [],
+      "curated_duplicate_id_groups": {},
+      "missing_directories": []
+    },
+    "knowledge_iteration": {
+      "status": "OK",
+      "path": ".harness/reports/Knowledge-Iteration/2026-W34/run-manifest.json",
+      "payload": {
+        "schema": "researchkb-knowledge-iteration/v1",
+        "iteration_id": "knowledge-iteration-2026-W34-20260817-155234",
+        "report_period": "2026-W34",
+        "generated_at": "2026-08-17T15:52:34+08:00",
+        "status": "OK",
+        "paths": {
+          "harness_package_root": ".harness/reports/Knowledge-Iteration",
+          "formal_report_root": "03-Resources/_Reports/Knowledge-Iteration"
+        },
+        "input": {
+          "raw_count": 0,
+          "raw_duplicate_hash_groups": 0,
+          "raw_retention": {
+            "max_age_days": 180,
+            "archive_root": "04-Archive/RAW",
+            "file_count": 0,
+            "archive_candidate_count": 0,
+            "evaluations": []
+          }
+        },
+        "curated": {
+          "card_count": 0,
+          "missing_required_fields": [],
+          "duplicate_id_groups": {},
+          "compile": {
+            "compile_id": "knowledge-compile-20260817-153934",
+            "status": "OK_EMPTY",
+            "raw_count": 0,
+            "unique_source_count": 0,
+            "proposed_count": 0,
+            "hold_count": 0,
+            "skipped_count": 0,
+            "formal_card_writes": 0
+          }
+        },
+        "promotion": {
+          "formal_curated_apply": true,
+          "formal_card_writes": 0,
+          "auto_areas_promotion": false,
+          "usage_recording": false
+        },
+        "reports": {
+          "unit_count": 59,
+          "total_bytes": 2463997,
+          "threshold_bytes": 209715200,
+          "threshold_reached": false,
+          "keep_latest_count": 12,
+          "quarterly_representatives": {
+            "2026-Q3": ".harness/reports/knowledge-compile-20260817-153934.md"
+          },
+          "archive_candidate_count": 0,
+          "units": [
+            {
+              "path": ".harness/reports/horizon-daily-20260813-174125.md",
+              "relative_to_reports": "horizon-daily-20260813-174125.md",
+              "kind": "file",
+              "size": 214,
+              "modified_at": "2026-08-13T17:41:25+08:00",
+              "sha256": "718c718c5d63c47e5d6a04de1c62a7ae49b0017bd44924c082068d0e432b2b6b",
+              "period": "2026-W33",
+              "quarter": "2026-Q3",
+              "failed": false,
+              "action": "keep-below-threshold",
+              "reason": "Reports 空间未超过配置阈值"
+            },
+            {
+              "path": ".harness/reports/horizon-daily-20260813-174130.md",
+              "relative_to_reports": "horizon-daily-20260813-174130.md",
+              "kind": "file",
+              "size": 217,
+              "modified_at": "2026-08-13T17:42:12+08:00",
+              "sha256": "0e44c910f8c1762dd651ea90874bcbb96761ee5bf240a6b49ef0e18cbe83f668",
+              "period": "2026-W33",
+              "quarter": "2026-Q3",
+              "failed": true,
+              "action": "keep-below-threshold",
+              "reason": "Reports 空间未超过配置阈值"
+            },
+            {
+              "path": ".harness/reports/horizon-daily-20260813-174311.md",
+              "relative_to_reports": "horizon-daily-20260813-174311.md",
+              "kind": "file",
+              "size": 231,
+              "modified_at": "2026-08-13T17:43:11+08:00",
+              "sha256": "18a49322c0978d236666538df06e8e5a14dfe83ad309e54f3db08781f6b34cb1",
+              "period": "2026-W33",
+              "quarter": "2026-Q3",
+              "failed": false,
+              "action": "keep-below-threshold",
+              "reason": "Reports 空间未超过配置阈值"
+            },
+            {
+              "path": ".harness/reports/horizon-daily-20260813-185121.md",
+              "relative_to_reports": "horizon-daily-20260813-185121.md",
+              "kind": "file",
+              "size": 211,
+              "modified_at": "2026-08-13T18:51:21+08:00",
+              "sha256": "055170b4842184474f6d5a8291d53f7e96a1d2fb0dcc798fae4eddba792092e1",
+              "period": "2026-W33",
+              "quarter": "2026-Q3",
+              "failed": false,
+              "action": "keep-below-threshold",
+              "reason": "Reports 空间未超过配置阈值"
+            },
+            {
+              "path": ".harness/reports/horizon-daily-20260814-120313.md",
+              "relative_to_reports": "horizon-daily-20260814-120313.md",
+              "kind": "file",
+              "size": 216,
+              "modified_at": "2026-08-14T12:03:58+08:00",
+              "sha256": "c397a732eca3d80e67360c080594f5f3b9381f95ce7cfa71e00696324e28a5b1",
+              "period": "2026-W33",
+              "quarter": "2026-Q3",
+              "failed": true,
+              "action": "keep-below-threshold",
+              "reason": "Reports 空间未超过配置阈值"
+            },
+            {
+              "path": ".harness/reports/horizon-daily-20260814-121354.md",
+              "relative_to_reports": "horizon-daily-20260814-121354.md",
+              "kind": "file",
+              "size": 222,
+              "modified_at": "2026-08-14T12:14:15+08:00",
+              "sha256": "cfb189386e28608e114398b527c415d376a4a6f84ecd0d7f3cafbc5db1afd441",
+              "period": "2026-W33",
+              "quarter": "2026-Q3",
+              "failed": true,
+              "action": "keep-below-threshold",
+              "reason": "Reports 空间未超过配置阈值"
+            },
+            {
+              "path": ".harness/reports/horizon-daily-20260815-120400.md",
+              "relative_to_reports": "horizon-daily-20260815-120400.md",
+              "kind": "file",
+              "size": 222,
+              "modified_at": "2026-08-15T12:04:39+08:00",
+              "sha256": "6149d76007ba9f51e815bec311596d6d12dd671812471ea701125c75b580bbe4",
+              "period": "2026-W33",
+              "quarter": "2026-Q3",
+              "failed": true,
+              "action": "keep-below-threshold",
+              "reason": "Reports 空间未超过配置阈值"
+            },
+            {
+              "path": ".harness/reports/horizon-weekly-20260815-124353.md",
+              "relative_to_reports": "horizon-weekly-20260815-124353.md",
+              "kind": "file",
+              "size": 237,
+              "modified_at": "2026-08-15T12:43:53+08:00",
+              "sha256": "9ee6507d1f904805ae9c511a44c33c3bca4051cd58f47e4cce704d82e90e8df7",
+              "period": "2026-W33",
+              "quarter": "2026-Q3",
+              "failed": false,
+              "action": "keep-below-threshold",
+              "reason": "Reports 空间未超过配置阈值"
+            },
+            {
+              "path": ".harness/reports/horizon-weekly-20260815-124736.md",
+              "relative_to_reports": "horizon-weekly-20260815-124736.md",
+              "kind": "file",
+              "size": 237,
+              "modified_at": "2026-08-15T12:47:36+08:00",
+              "sha256": "477d823ca777c96c334365f2510221df09f8bd4739ac5684f097a1d4fb657a9c",
+              "period": "2026-W33",
+              "quarter": "2026-Q3",
+              "failed": false,
+              "action": "keep-below-threshold",
+              "reason": "Reports 空间未超过配置阈值"
+            },
+            {
+              "path": ".harness/reports/horizon-weekly-20260815-124950.md",
+              "relative_to_reports": "horizon-weekly-20260815-124950.md",
+              "kind": "file",
+              "size": 237,
+              "modified_at": "2026-08-15T12:49:50+08:00",
+              "sha256": "b4c8d00c13e70d200d9780afa076fbb0cf6568e50840e3ca62f8a381e41b8ae0",
+              "period": "2026-W33",
+              "quarter": "2026-Q3",
+              "failed": false,
+              "action": "keep-below-threshold",
+              "reason": "Reports 空间未超过配置阈值"
+            },
+            {
+              "path": ".harness/reports/horizon-weekly-20260815-142333.md",
+              "relative_to_reports": "horizon-weekly-20260815-142333.md",
+              "kind": "file",
+              "size": 237,
+              "modified_at": "2026-08-15T14:23:33+08:00",
+              "sha256": "1e4b6150c8415a1c44bd5ccf47dc0fd976ba97b5e9ab59f8fb420c14beb6afc1",
+              "period": "2026-W33",
+              "quarter": "2026-Q3",
+              "failed": false,
+              "action": "keep-below-threshold",
+              "reason": "Reports 空间未超过配置阈值"
+            },
+            {
+              "path": ".harness/reports/horizon-weekly-20260815-154243.md",
+              "relative_to_reports": "horizon-weekly-20260815-154243.md",
+              "kind": "file",
+              "size": 237,
+              "modified_at": "2026-08-15T15:42:43+08:00",
+              "sha256": "3db95ed64b5f65569f8793e064b9988f19736ce280022e33795f70b0490be383",
+              "period": "2026-W33",
+              "quarter": "2026-Q3",
+              "failed": false,
+              "action": "keep-below-threshold",
+              "reason": "Reports 空间未超过配置阈值"
+            },
+            {
+              "path": ".harness/reports/horizon-weekly-20260816-233820.md",
+              "relative_to_reports": "horizon-weekly-20260816-233820.md",
+              "kind": "file",
+              "size": 226,
+              "modified_at": "2026-08-17T00:37:53+08:00",
+              "sha256": "ca00db1368cf84e3031858cbaf504c8237b0703b885e2299bdef83af9de45386",
+              "period": "2026-W33",
+              "quarter": "2026-Q3",
+              "failed": false,
+              "action": "keep-below-threshold",
+              "reason": "Reports 空间未超过配置阈值"
+            },
+            {
+              "path": ".harness/reports/knowledge-compile-20260817-151353.md",
+              "relative_to_reports": "knowledge-compile-20260817-151353.md",
+              "kind": "file",
+              "size": 753,
+              "modified_at": "2026-08-17T15:13:53+08:00",
+              "sha256": "fc0cf6710d29b8edd538002dc1ed2a49c4dc23d8cbec18a16d480563f441912e",
+              "period": "2026-W34",
+              "quarter": "2026-Q3",
+              "failed": false,
+              "action": "keep-below-threshold",
+              "reason": "Reports 空间未超过配置阈值"
+            },
+            {
+              "path": ".harness/reports/knowledge-compile-20260817-153934.md",
+              "relative_to_reports": "knowledge-compile-20260817-153934.md",
+              "kind": "file",
+              "size": 846,
+              "modified_at": "2026-08-17T15:39:34+08:00",
+              "sha256": "c2340b1d23f9e354d10b4a07b9bbae1e28c34901c2d8a6deb991061148474f32",
+              "period": "2026-W34",
+              "quarter": "2026-Q3",
+              "failed": false,
+              "action": "keep-below-threshold",
+              "reason": "Reports 空间未超过配置阈值"
+            },
+            {
+              "path": ".harness/reports/knowledge-lifecycle-20260817-142449.md",
+              "relative_to_reports": "knowledge-lifecycle-20260817-142449.md",
+              "kind": "file",
+              "size": 612,
+              "modified_at": "2026-08-17T14:24:49+08:00",
+              "sha256": "acd41ea76a1e77d4886e5e62014068ebe38967bc969761aa354a483b927b66de",
+              "period": "2026-W34",
+              "quarter": "2026-Q3",
+              "failed": false,
+              "action": "keep-below-threshold",
+              "reason": "Reports 空间未超过配置阈值"
+            },
+            {
+              "path": ".harness/reports/maintenance-audit-20260817-124345.json",
+              "relative_to_reports": "maintenance-audit-20260817-124345.json",
+              "kind": "file",
+              "size": 294648,
+              "modified_at": "2026-08-17T12:43:45+08:00",
+              "sha256": "a342bba21f58c0ab9ad37d05299707357d4375961b5a72bde6d219d463343fb0",
+              "period": "2026-W34",
+              "quarter": "2026-Q3",
+              "failed": true,
+              "action": "keep-below-threshold",
+              "reason": "Reports 空间未超过配置阈值"
+            },
+            {
+              "path": ".harness/reports/maintenance-audit-20260817-124345.md",
+              "relative_to_reports": "maintenance-audit-20260817-124345.md",
+              "kind": "file",
+              "size": 43176,
+              "modified_at": "2026-08-17T12:43:45+08:00",
+              "sha256": "e874ea9d2eaaf245398427155f0c40146d8303cc490c1e3c3ab7343955ff1a87",
+              "period": "2026-W34",
+              "quarter": "2026-Q3",
+              "failed": true,
+              "action": "keep-below-threshold",
+              "reason": "Reports 空间未超过配置阈值"
+            },
+            {
+              "path": ".harness/reports/maintenance-audit-20260817-124550.json",
+              "relative_to_reports": "maintenance-audit-20260817-124550.json",
+              "kind": "file",
+              "size": 318475,
+              "modified_at": "2026-08-17T12:45:50+08:00",
+              "sha256": "28182bb2f4eceb672b2d4ba772d08164e548b362ff96d3491596a66cb613f135",
+              "period": "2026-W34",
+              "quarter": "2026-Q3",
+              "failed": true,
+              "action": "keep-below-threshold",
+              "reason": "Reports 空间未超过配置阈值"
+            },
+            {
+              "path": ".harness/reports/maintenance-audit-20260817-124550.md",
+              "relative_to_reports": "maintenance-audit-20260817-124550.md",
+              "kind": "file",
+              "size": 42021,
+              "modified_at": "2026-08-17T12:45:50+08:00",
+              "sha256": "4dc8d238f64d19b01987a6eb4735ce82fc75aca84602f0e56cc9a3c12ad0ac20",
+              "period": "2026-W34",
+              "quarter": "2026-Q3",
+              "failed": true,
+              "action": "keep-below-threshold",
+              "reason": "Reports 空间未超过配置阈值"
+            },
+            {
+              "path": ".harness/reports/maintenance-audit-20260817-124645.json",
+              "relative_to_reports": "maintenance-audit-20260817-124645.json",
+              "kind": "file",
+              "size": 343822,
+              "modified_at": "2026-08-17T12:46:45+08:00",
+              "sha256": "dbcae90a870e8238e953500221858bfedac8fb6330d3e36121c0763219d46297",
+              "period": "2026-W34",
+              "quarter": "2026-Q3",
+              "failed": true,
+              "action": "keep-below-threshold",
+              "reason": "Reports 空间未超过配置阈值"
+            },
+            {
+              "path": ".harness/reports/maintenance-audit-20260817-124645.md",
+              "relative_to_reports": "maintenance-audit-20260817-124645.md",
+              "kind": "file",
+              "size": 42216,
+              "modified_at": "2026-08-17T12:46:45+08:00",
+              "sha256": "509e0901d076ff29f7161872b587bd1754142a27a1b467f30ae9d5dfc79d7ff3",
+              "period": "2026-W34",
+              "quarter": "2026-Q3",
+              "failed": true,
+              "action": "keep-below-threshold",
+              "reason": "Reports 空间未超过配置阈值"
+            },
+            {
+              "path": ".harness/reports/maintenance-audit-20260817-124816.json",
+              "relative_to_reports": "maintenance-audit-20260817-124816.json",
+              "kind": "file",
+              "size": 372529,
+              "modified_at": "2026-08-17T12:48:16+08:00",
+              "sha256": "cfc5ea7ab0f4e93c829466798945ba67311fc2f115147e05b72c52d29e4bd5be",
+              "period": "2026-W34",
+              "quarter": "2026-Q3",
+              "failed": true,
+              "action": "keep-below-threshold",
+              "reason": "Reports 空间未超过配置阈值"
+            },
+            {
+              "path": ".harness/reports/maintenance-audit-20260817-124816.md",
+              "relative_to_reports": "maintenance-audit-20260817-124816.md",
+              "kind": "file",
+              "size": 43052,
+              "modified_at": "2026-08-17T12:48:16+08:00",
+              "sha256": "1abcace338dd38bd96a9b79d5551d86deb0494626557d5144e5a5dfe4baca0a7",
+              "period": "2026-W34",
+              "quarter": "2026-Q3",
+              "failed": true,
+              "action": "keep-below-threshold",
+              "reason": "Reports 空间未超过配置阈值"
+            },
+            {
+              "path": ".harness/reports/maintenance-audit-20260817-140459.json",
+              "relative_to_reports": "maintenance-audit-20260817-140459.json",
+              "kind": "file",
+              "size": 399026,
+              "modified_at": "2026-08-17T14:04:59+08:00",
+              "sha256": "803c873f91adf8602f0a7f18719f43b36ff8ca6ac07b141ba8d089b4cfee560b",
+              "period": "2026-W34",
+              "quarter": "2026-Q3",
+              "failed": true,
+              "action": "keep-below-threshold",
+              "reason": "Reports 空间未超过配置阈值"
+            },
+            {
+              "path": ".harness/reports/maintenance-audit-20260817-140459.md",
+              "relative_to_reports": "maintenance-audit-20260817-140459.md",
+              "kind": "file",
+              "size": 42529,
+              "modified_at": "2026-08-17T14:04:59+08:00",
+              "sha256": "a13cb6ce8b2c101f0479cf4c764b7e8a48270d4038150a06f9356ac65c849f4c",
+              "period": "2026-W34",
+              "quarter": "2026-Q3",
+              "failed": true,
+              "action": "keep-below-threshold",
+              "reason": "Reports 空间未超过配置阈值"
+            },
+            {
+              "path": ".harness/reports/maintenance-audit-20260817-140623.json",
+              "relative_to_reports": "maintenance-audit-20260817-140623.json",
+              "kind": "file",
+              "size": 429477,
+              "modified_at": "2026-08-17T14:06:23+08:00",
+              "sha256": "2610b463651978f89e4c6151071a013b566f40bdb9ca899057baef6759629545",
+              "period": "2026-W34",
+              "quarter": "2026-Q3",
+              "failed": true,
+              "action": "keep-below-threshold",
+              "reason": "Reports 空间未超过配置阈值"
+            },
+            {
+              "path": ".harness/reports/maintenance-audit-20260817-140623.md",
+              "relative_to_reports": "maintenance-audit-20260817-140623.md",
+              "kind": "file",
+              "size": 43533,
+              "modified_at": "2026-08-17T14:06:23+08:00",
+              "sha256": "34fe16a7f5ec294938d72a6048106ad0b5aacbb55243f7ba0b886f411313e63e",
+              "period": "2026-W34",
+              "quarter": "2026-Q3",
+              "failed": true,
+              "action": "keep-below-threshold",
+              "reason": "Reports 空间未超过配置阈值"
+            },
+            {
+              "path": ".harness/reports/v3-daily-20260812-152355.md",
+              "relative_to_reports": "v3-daily-20260812-152355.md",
+              "kind": "file",
+              "size": 1259,
+              "modified_at": "2026-08-12T15:23:55+08:00",
+              "sha256": "2a8e33659d245cd188a17825f1992f77699685cc90c5ae660d6abf5f1a0785a7",
+              "period": "2026-W33",
+              "quarter": "2026-Q3",
+              "failed": false,
+              "action": "keep-below-threshold",
+              "reason": "Reports 空间未超过配置阈值"
+            },
+            {
+              "path": ".harness/reports/v3-daily-20260812-152407.md",
+              "relative_to_reports": "v3-daily-20260812-152407.md",
+              "kind": "file",
+              "size": 1259,
+              "modified_at": "2026-08-12T15:24:07+08:00",
+              "sha256": "fbe446d1b4c37c29f2d19f7abb279da79435c7e4d21337ae9967c597ce74d7d9",
+              "period": "2026-W33",
+              "quarter": "2026-Q3",
+              "failed": false,
+              "action": "keep-below-threshold",
+              "reason": "Reports 空间未超过配置阈值"
+            },
+            {
+              "path": ".harness/reports/v3-daily-20260812-152431.md",
+              "relative_to_reports": "v3-daily-20260812-152431.md",
+              "kind": "file",
+              "size": 1380,
+              "modified_at": "2026-08-12T15:24:41+08:00",
+              "sha256": "ee4f7513ac586a8b18cc2b16108a61ef7966c1835577aea8f81c08c3c6e2dca0",
+              "period": "2026-W33",
+              "quarter": "2026-Q3",
+              "failed": true,
+              "action": "keep-below-threshold",
+              "reason": "Reports 空间未超过配置阈值"
+            },
+            {
+              "path": ".harness/reports/v3-daily-20260812-152641.md",
+              "relative_to_reports": "v3-daily-20260812-152641.md",
+              "kind": "file",
+              "size": 1312,
+              "modified_at": "2026-08-12T15:27:00+08:00",
+              "sha256": "31bf254158a483d17b657020d02ff1cb209561cc4e5d8ddf06527357b3159dbf",
+              "period": "2026-W33",
+              "quarter": "2026-Q3",
+              "failed": true,
+              "action": "keep-below-threshold",
+              "reason": "Reports 空间未超过配置阈值"
+            },
+            {
+              "path": ".harness/reports/v3-daily-20260812-153159.md",
+              "relative_to_reports": "v3-daily-20260812-153159.md",
+              "kind": "file",
+              "size": 1259,
+              "modified_at": "2026-08-12T15:31:59+08:00",
+              "sha256": "4d93de42f6d97804d4ce1676358d173a7dc2ab758cfb13c609321400df23c270",
+              "period": "2026-W33",
+              "quarter": "2026-Q3",
+              "failed": false,
+              "action": "keep-below-threshold",
+              "reason": "Reports 空间未超过配置阈值"
+            },
+            {
+              "path": ".harness/reports/v3-daily-20260812-153458.md",
+              "relative_to_reports": "v3-daily-20260812-153458.md",
+              "kind": "file",
+              "size": 1311,
+              "modified_at": "2026-08-12T15:35:12+08:00",
+              "sha256": "a0aeea187180d829a400bd1771b5e2171157fa40ca7f4d48199c166421f449c2",
+              "period": "2026-W33",
+              "quarter": "2026-Q3",
+              "failed": true,
+              "action": "keep-below-threshold",
+              "reason": "Reports 空间未超过配置阈值"
+            },
+            {
+              "path": ".harness/reports/v3-daily-20260812-153906.md",
+              "relative_to_reports": "v3-daily-20260812-153906.md",
+              "kind": "file",
+              "size": 1311,
+              "modified_at": "2026-08-12T15:50:45+08:00",
+              "sha256": "a3ba423a86b2d3fe30bf8fd9adde7f6727105f55baa250c471f957a97452fd02",
+              "period": "2026-W33",
+              "quarter": "2026-Q3",
+              "failed": true,
+              "action": "keep-below-threshold",
+              "reason": "Reports 空间未超过配置阈值"
+            },
+            {
+              "path": ".harness/reports/v3-lint-20260812-152326.md",
+              "relative_to_reports": "v3-lint-20260812-152326.md",
+              "kind": "file",
+              "size": 143,
+              "modified_at": "2026-08-12T15:23:26+08:00",
+              "sha256": "b3faa17d14a7f2465a2d96261df60eaaac0dd2c7a0db0056c904b90b1982bca9",
+              "period": "2026-W33",
+              "quarter": "2026-Q3",
+              "failed": false,
+              "action": "keep-below-threshold",
+              "reason": "Reports 空间未超过配置阈值"
+            },
+            {
+              "path": ".harness/reports/v3-lint-20260812-152355.md",
+              "relative_to_reports": "v3-lint-20260812-152355.md",
+              "kind": "file",
+              "size": 143,
+              "modified_at": "2026-08-12T15:23:55+08:00",
+              "sha256": "ae29b0bb6127349cae8095cdc5c64e8e65964862d81d409e4053fd50ff48f162",
+              "period": "2026-W33",
+              "quarter": "2026-Q3",
+              "failed": false,
+              "action": "keep-below-threshold",
+              "reason": "Reports 空间未超过配置阈值"
+            },
+            {
+              "path": ".harness/reports/v3-lint-20260812-152407.md",
+              "relative_to_reports": "v3-lint-20260812-152407.md",
+              "kind": "file",
+              "size": 143,
+              "modified_at": "2026-08-12T15:24:07+08:00",
+              "sha256": "62daaa5513d6747aa51f5743cb645aae9c47dadf235b5a3c2d9d22729f274c18",
+              "period": "2026-W33",
+              "quarter": "2026-Q3",
+              "failed": false,
+              "action": "keep-below-threshold",
+              "reason": "Reports 空间未超过配置阈值"
+            },
+            {
+              "path": ".harness/reports/v3-lint-20260812-153018.md",
+              "relative_to_reports": "v3-lint-20260812-153018.md",
+              "kind": "file",
+              "size": 143,
+              "modified_at": "2026-08-12T15:30:18+08:00",
+              "sha256": "2009a22279164d86ec746b88ac59917ddae2e276ba355ac1855a343a8ebacb0a",
+              "period": "2026-W33",
+              "quarter": "2026-Q3",
+              "failed": false,
+              "action": "keep-below-threshold",
+              "reason": "Reports 空间未超过配置阈值"
+            },
+            {
+              "path": ".harness/reports/v3-lint-20260812-153046.md",
+              "relative_to_reports": "v3-lint-20260812-153046.md",
+              "kind": "file",
+              "size": 143,
+              "modified_at": "2026-08-12T15:30:46+08:00",
+              "sha256": "f749669ac7684e0b05f9a9a1c145b83988628c714a040f4867f80cb46f4eae09",
+              "period": "2026-W33",
+              "quarter": "2026-Q3",
+              "failed": false,
+              "action": "keep-below-threshold",
+              "reason": "Reports 空间未超过配置阈值"
+            },
+            {
+              "path": ".harness/reports/v3-lint-20260812-153159.md",
+              "relative_to_reports": "v3-lint-20260812-153159.md",
+              "kind": "file",
+              "size": 143,
+              "modified_at": "2026-08-12T15:31:59+08:00",
+              "sha256": "118498b1c9f7c921d377476e4796bf2802b08f2281129aab336d11f78472fe37",
+              "period": "2026-W33",
+              "quarter": "2026-Q3",
+              "failed": false,
+              "action": "keep-below-threshold",
+              "reason": "Reports 空间未超过配置阈值"
+            },
+            {
+              "path": ".harness/reports/v3-lint-20260812-153357.md",
+              "relative_to_reports": "v3-lint-20260812-153357.md",
+              "kind": "file",
+              "size": 143,
+              "modified_at": "2026-08-12T15:33:57+08:00",
+              "sha256": "612159b78a93c785295dcd54858decb600be005c69574dea21a19c32aef13605",
+              "period": "2026-W33",
+              "quarter": "2026-Q3",
+              "failed": false,
+              "action": "keep-below-threshold",
+              "reason": "Reports 空间未超过配置阈值"
+            },
+            {
+              "path": ".harness/reports/v3-lint-20260812-153415.md",
+              "relative_to_reports": "v3-lint-20260812-153415.md",
+              "kind": "file",
+              "size": 143,
+              "modified_at": "2026-08-12T15:34:15+08:00",
+              "sha256": "061b6b5518ef6f4141f16c2d899785618290df1b09cb9be90f76d4590517df3c",
+              "period": "2026-W33",
+              "quarter": "2026-Q3",
+              "failed": false,
+              "action": "keep-below-threshold",
+              "reason": "Reports 空间未超过配置阈值"
+            },
+            {
+              "path": ".harness/reports/v3-lint-20260812-154438.md",
+              "relative_to_reports": "v3-lint-20260812-154438.md",
+              "kind": "file",
+              "size": 143,
+              "modified_at": "2026-08-12T15:44:38+08:00",
+              "sha256": "ce56df17d991e6c3e36c0ff891e08d8b5e7d82841333755afe2311144641582b",
+              "period": "2026-W33",
+              "quarter": "2026-Q3",
+              "failed": false,
+              "action": "keep-below-threshold",
+              "reason": "Reports 空间未超过配置阈值"
+            },
+            {
+              "path": ".harness/reports/v3-lint-20260813-134143.md",
+              "relative_to_reports": "v3-lint-20260813-134143.md",
+              "kind": "file",
+              "size": 143,
+              "modified_at": "2026-08-13T13:41:43+08:00",
+              "sha256": "9b1f5645af580b0d2c0f8a6a6955a6caeda858e1b145df58d3c43511c01e56b5",
+              "period": "2026-W33",
+              "quarter": "2026-Q3",
+              "failed": false,
+              "action": "keep-below-threshold",
+              "reason": "Reports 空间未超过配置阈值"
+            },
+            {
+              "path": ".harness/reports/v3-lint-20260813-134229.md",
+              "relative_to_reports": "v3-lint-20260813-134229.md",
+              "kind": "file",
+              "size": 143,
+              "modified_at": "2026-08-13T13:42:29+08:00",
+              "sha256": "6789d07cc968bbf444b7499261bc54475f0498cdcbcc89e507dcf1c1d8640636",
+              "period": "2026-W33",
+              "quarter": "2026-Q3",
+              "failed": false,
+              "action": "keep-below-threshold",
+              "reason": "Reports 空间未超过配置阈值"
+            },
+            {
+              "path": ".harness/reports/v3-lint-20260813-134521.md",
+              "relative_to_reports": "v3-lint-20260813-134521.md",
+              "kind": "file",
+              "size": 143,
+              "modified_at": "2026-08-13T13:45:21+08:00",
+              "sha256": "69ad16a1a14dca0643d45bac6a9d1f2e54cd89582ed541b5cb462085ac1b4afc",
+              "period": "2026-W33",
+              "quarter": "2026-Q3",
+              "failed": false,
+              "action": "keep-below-threshold",
+              "reason": "Reports 空间未超过配置阈值"
+            },
+            {
+              "path": ".harness/reports/v3-lint-20260813-134817.md",
+              "relative_to_reports": "v3-lint-20260813-134817.md",
+              "kind": "file",
+              "size": 143,
+              "modified_at": "2026-08-13T13:48:17+08:00",
+              "sha256": "357bbfd532dc3143a38b882fc4243b01e3a78d221315aa9d6b0ffd601f9ff470",
+              "period": "2026-W33",
+              "quarter": "2026-Q3",
+              "failed": false,
+              "action": "keep-below-threshold",
+              "reason": "Reports 空间未超过配置阈值"
+            },
+            {
+              "path": ".harness/reports/v3-lint-20260813-134859.md",
+              "relative_to_reports": "v3-lint-20260813-134859.md",
+              "kind": "file",
+              "size": 143,
+              "modified_at": "2026-08-13T13:48:59+08:00",
+              "sha256": "c53af31bd499633e8b3264cec496f75df365e74863c3a1a7548fc4c563ae53ab",
+              "period": "2026-W33",
+              "quarter": "2026-Q3",
+              "failed": false,
+              "action": "keep-below-threshold",
+              "reason": "Reports 空间未超过配置阈值"
+            },
+            {
+              "path": ".harness/reports/v3-lint-20260813-134956.md",
+              "relative_to_reports": "v3-lint-20260813-134956.md",
+              "kind": "file",
+              "size": 143,
+              "modified_at": "2026-08-13T13:49:56+08:00",
+              "sha256": "a433a36f4efd5506298d417a9c58fbc6f19e0dabacb5d5a04efa63e42805dc3d",
+              "period": "2026-W33",
+              "quarter": "2026-Q3",
+              "failed": false,
+              "action": "keep-below-threshold",
+              "reason": "Reports 空间未超过配置阈值"
+            },
+            {
+              "path": ".harness/reports/v3-lint-20260815-124752.md",
+              "relative_to_reports": "v3-lint-20260815-124752.md",
+              "kind": "file",
+              "size": 143,
+              "modified_at": "2026-08-15T12:47:52+08:00",
+              "sha256": "5dbd711b6298efed1a56487a0a38c9a150dd08af55c73f16cfb0336f38e4f976",
+              "period": "2026-W33",
+              "quarter": "2026-Q3",
+              "failed": false,
+              "action": "keep-below-threshold",
+              "reason": "Reports 空间未超过配置阈值"
+            },
+            {
+              "path": ".harness/reports/v3-lint-20260817-124750.md",
+              "relative_to_reports": "v3-lint-20260817-124750.md",
+              "kind": "file",
+              "size": 143,
+              "modified_at": "2026-08-17T12:47:50+08:00",
+              "sha256": "a01a5687db0a62b4fe834e4582057af991c87ae2d87bd4eee5a3bdf1e2ee809e",
+              "period": "2026-W34",
+              "quarter": "2026-Q3",
+              "failed": false,
+              "action": "keep-below-threshold",
+              "reason": "Reports 空间未超过配置阈值"
+            },
+            {
+              "path": ".harness/reports/v3-lint-20260817-140613.md",
+              "relative_to_reports": "v3-lint-20260817-140613.md",
+              "kind": "file",
+              "size": 143,
+              "modified_at": "2026-08-17T14:06:13+08:00",
+              "sha256": "3ae453d92d70df1d92ef75e049db599177a890cc9b5fffb93e02143acea94549",
+              "period": "2026-W34",
+              "quarter": "2026-Q3",
+              "failed": false,
+              "action": "keep-below-threshold",
+              "reason": "Reports 空间未超过配置阈值"
+            },
+            {
+              "path": ".harness/reports/v3-query-20260812-152431.md",
+              "relative_to_reports": "v3-query-20260812-152431.md",
+              "kind": "file",
+              "size": 9625,
+              "modified_at": "2026-08-12T15:24:31+08:00",
+              "sha256": "8636837a9bbf392f02ceeaa0359719765a1fca074401d7d94cdac92a1d2f8eff",
+              "period": "2026-W33",
+              "quarter": "2026-Q3",
+              "failed": false,
+              "action": "keep-below-threshold",
+              "reason": "Reports 空间未超过配置阈值"
+            },
+            {
+              "path": ".harness/reports/v3-query-20260812-152631.md",
+              "relative_to_reports": "v3-query-20260812-152631.md",
+              "kind": "file",
+              "size": 5021,
+              "modified_at": "2026-08-12T15:26:31+08:00",
+              "sha256": "9ff269f3525b05bcb6f1a3f30c14ad8e8580e9e01f965743bafcaa1312c8f04c",
+              "period": "2026-W33",
+              "quarter": "2026-Q3",
+              "failed": false,
+              "action": "keep-below-threshold",
+              "reason": "Reports 空间未超过配置阈值"
+            },
+            {
+              "path": ".harness/reports/v3-query-20260812-152641.md",
+              "relative_to_reports": "v3-query-20260812-152641.md",
+              "kind": "file",
+              "size": 5021,
+              "modified_at": "2026-08-12T15:26:41+08:00",
+              "sha256": "e01107ba8910a699879c7f07c940aa3d81bf1cb3b1739d00e35d57cd6c323683",
+              "period": "2026-W33",
+              "quarter": "2026-Q3",
+              "failed": false,
+              "action": "keep-below-threshold",
+              "reason": "Reports 空间未超过配置阈值"
+            },
+            {
+              "path": ".harness/reports/v3-weekly-20260812-153046.md",
+              "relative_to_reports": "v3-weekly-20260812-153046.md",
+              "kind": "file",
+              "size": 6420,
+              "modified_at": "2026-08-12T15:30:46+08:00",
+              "sha256": "7ffde33bb3e84d03413752b95eff7b9029dea254f2bd390ce0de74184bc5aeef",
+              "period": "2026-W33",
+              "quarter": "2026-Q3",
+              "failed": false,
+              "action": "keep-below-threshold",
+              "reason": "Reports 空间未超过配置阈值"
+            },
+            {
+              "path": ".harness/reports/v3-weekly-20260812-153159.md",
+              "relative_to_reports": "v3-weekly-20260812-153159.md",
+              "kind": "file",
+              "size": 3130,
+              "modified_at": "2026-08-12T15:31:59+08:00",
+              "sha256": "726fb8af42df569a9d43ec864c5218bb27fa1776c3f2b307312901cffcd10e73",
+              "period": "2026-W33",
+              "quarter": "2026-Q3",
+              "failed": false,
+              "action": "keep-below-threshold",
+              "reason": "Reports 空间未超过配置阈值"
+            },
+            {
+              "path": ".harness/reports/v3-weekly-20260817-000211.md",
+              "relative_to_reports": "v3-weekly-20260817-000211.md",
+              "kind": "file",
+              "size": 3456,
+              "modified_at": "2026-08-17T00:02:11+08:00",
+              "sha256": "69e9cb3d553078b9532fdcb69e676d9f5e1665554659b5a29e02b89ac76ef129",
+              "period": "2026-W34",
+              "quarter": "2026-Q3",
+              "failed": false,
+              "action": "keep-below-threshold",
+              "reason": "Reports 空间未超过配置阈值"
+            }
+          ]
+        },
+        "exceptions": [],
+        "formal_report_writes": 6,
+        "report_archive_moves": 0,
+        "raw_archive_moves": 0,
+        "deletions": 0,
+        "report_files": {
+          "00-Run-Summary.md": ".harness/reports/Knowledge-Iteration/2026-W34/00-Run-Summary.md",
+          "01-Input-Report.md": ".harness/reports/Knowledge-Iteration/2026-W34/01-Input-Report.md",
+          "02-Curated-Changes.md": ".harness/reports/Knowledge-Iteration/2026-W34/02-Curated-Changes.md",
+          "03-Promotion-Actions.md": ".harness/reports/Knowledge-Iteration/2026-W34/03-Promotion-Actions.md",
+          "04-Exceptions.md": ".harness/reports/Knowledge-Iteration/2026-W34/04-Exceptions.md",
+          "run-manifest.json": ".harness/reports/Knowledge-Iteration/2026-W34/run-manifest.json"
+        },
+        "formal_report_status": "APPLIED",
+        "formal_report_reason": "显式 --apply 发布 Harness 生成的周报告包"
+      }
+    },
+    "usage": {
+      "status": "OK",
+      "path": ".harness/state/knowledge-usage.json",
+      "total_uses": 0,
+      "uses_30d": 0,
+      "uses_90d": 0,
+      "resources": []
+    },
+    "upgrade": {
+      "status": "OK",
+      "path": ".harness/state/knowledge-upgrade.json",
+      "decision_status": "OK_EMPTY",
+      "eligible_resources": [],
+      "holds": [],
+      "threshold": 5,
+      "window_days": 90
+    },
+    "areas": {
+      "status": "OK",
+      "path": ".harness/state/knowledge-areas.json",
+      "sync_status": "OK_EMPTY",
+      "areas_writes": 0,
+      "candidates": [],
+      "holds": []
+    },
+    "area_inventory": {
+      "file_count": 51,
+      "managed_area_file_count": 0,
+      "protected_area_file_count": 51,
+      "duplicate_derived_from": [],
+      "files": [
+        {
+          "path": "02-Areas/材料科学/01_固体结构/01_原子结构.md",
+          "sha256": "b0335c7fdddb38f999ee125d5d63073c65b0b434028035cda39b86b1029d699f",
+          "managed_area": false,
+          "derived_from": ""
+        },
+        {
+          "path": "02-Areas/材料科学/01_固体结构/02_原子间的键合.md",
+          "sha256": "11f7a8599af1c15aa16c0aa4aae9db2a0eb770986aa8ed9e00fedd0d11eb4b46",
+          "managed_area": false,
+          "derived_from": ""
+        },
+        {
+          "path": "02-Areas/材料科学/01_固体结构/03_晶体学基础.md",
+          "sha256": "1984696a732c1665059c78118e7dec62c11c0a12a5e2be33e93a7a87b760c205",
+          "managed_area": false,
+          "derived_from": ""
+        },
+        {
+          "path": "02-Areas/材料科学/01_固体结构/04_金属的晶体结构.md",
+          "sha256": "6ecaf7a246ae0a6bc1c2a919128c0f633b0b21d6a12a978e5260a41c50a73a2d",
+          "managed_area": false,
+          "derived_from": ""
+        },
+        {
+          "path": "02-Areas/材料科学/01_固体结构/05_合金相结构.md",
+          "sha256": "d0fcea811795d6130a0cad149384e0cf453db92e68ffdf5d2f463076ca173d1f",
+          "managed_area": false,
+          "derived_from": ""
+        },
+        {
+          "path": "02-Areas/材料科学/01_固体结构/06_离子晶体结构.md",
+          "sha256": "eaa30ab2ad9ef6cd34097f72e52c525d69932b0e07a8a56c9e2108f3964be487",
+          "managed_area": false,
+          "derived_from": ""
+        },
+        {
+          "path": "02-Areas/材料科学/01_固体结构/07_共价晶体结构.md",
+          "sha256": "79b8ecc281fa4396c72dfc5dc1adec989ea3a17c10902823915112cdd30a24db",
+          "managed_area": false,
+          "derived_from": ""
+        },
+        {
+          "path": "02-Areas/材料科学/01_固体结构/08_其他晶体结构.md",
+          "sha256": "4f1d8a7405bc158295b9d4d0be70cae6aef812968137e87a7462b3877c890ae3",
+          "managed_area": false,
+          "derived_from": ""
+        },
+        {
+          "path": "02-Areas/材料科学/02_晶体缺陷/01_晶体缺陷概述.md",
+          "sha256": "bd25c2e6ae43a7903b7962849df2452a6cf4dc964db8a206a4720ba3b94744c3",
+          "managed_area": false,
+          "derived_from": ""
+        },
+        {
+          "path": "02-Areas/材料科学/02_晶体缺陷/02_点缺陷.md",
+          "sha256": "b8072eb08bbd8a17ec94da6c35ba4179ec2bff4e09a2df7aad90514f063ebac3",
+          "managed_area": false,
+          "derived_from": ""
+        },
+        {
+          "path": "02-Areas/材料科学/02_晶体缺陷/03_线缺陷.md",
+          "sha256": "2e4cdb63ff15233dab8a18f18d352f600532d620562a73266804d029700cc06e",
+          "managed_area": false,
+          "derived_from": ""
+        },
+        {
+          "path": "02-Areas/材料科学/02_晶体缺陷/04_面缺陷.md",
+          "sha256": "89e08bcfc9bad4c283e5b068e77816f82be415cc453e48ab3815db0864c57494",
+          "managed_area": false,
+          "derived_from": ""
+        },
+        {
+          "path": "02-Areas/材料科学/03_扩散/01_扩散及其分类.md",
+          "sha256": "83e8e2a074a991dbf162989f719aae98bd37802df9b60b0fa9bbd2d9462755b1",
+          "managed_area": false,
+          "derived_from": ""
+        },
+        {
+          "path": "02-Areas/材料科学/03_扩散/02_菲克定律与扩散方程.md",
+          "sha256": "7c68b2f6e37d6283940ee631d4bcea6c0faed97ccc75c035da8f0724a1c4a7be",
+          "managed_area": false,
+          "derived_from": ""
+        },
+        {
+          "path": "02-Areas/材料科学/03_扩散/03_扩散的热力学分析.md",
+          "sha256": "05a699d93a44d9334d1897d4827e627bf53395f3bc5ca0db7fa29058b8583a34",
+          "managed_area": false,
+          "derived_from": ""
+        },
+        {
+          "path": "02-Areas/材料科学/03_扩散/04_扩散的原子理论.md",
+          "sha256": "31f8387cf9cc0e748343242e2b6e1f2dce3bfc8cab693c52a29663f63745c897",
+          "managed_area": false,
+          "derived_from": ""
+        },
+        {
+          "path": "02-Areas/材料科学/03_扩散/05_无规则行走与扩散距离.md",
+          "sha256": "bc86eced37d29ff06d8fbd6e9dd2351b02d11f11f16c7095869fdb979526ab70",
+          "managed_area": false,
+          "derived_from": ""
+        },
+        {
+          "path": "02-Areas/材料科学/03_扩散/06_影响扩散的因素.md",
+          "sha256": "d46a1f32234ae4ae277ba1ed850126aeac37b930a22cf33b837964141c3ec6cf",
+          "managed_area": false,
+          "derived_from": ""
+        },
+        {
+          "path": "02-Areas/材料科学/03_扩散/07_反应扩散.md",
+          "sha256": "387ff2fae5cb04cb4ab5a06e067b111a20a13b74b027025c49dc11370a659b00",
+          "managed_area": false,
+          "derived_from": ""
+        },
+        {
+          "path": "02-Areas/材料科学/03_扩散/08_离子晶体中的扩散.md",
+          "sha256": "86b3a147d7f5229bbd0d6b1222b9fe76246f9233a4724ac74f43faf9c0641ad0",
+          "managed_area": false,
+          "derived_from": ""
+        },
+        {
+          "path": "02-Areas/材料科学/04_变形与回复再结晶/01_弹性和黏弹性.md",
+          "sha256": "c3069c358fef07d3f3b31757f95bca2d394568502de4387e1f63376f21499854",
+          "managed_area": false,
+          "derived_from": ""
+        },
+        {
+          "path": "02-Areas/材料科学/04_变形与回复再结晶/02_晶体的塑性变形.md",
+          "sha256": "37ba3bcc1ad8c6a53659a62929afa5a9b26ca53f9d12b106e11a2fdc16d2b37a",
+          "managed_area": false,
+          "derived_from": ""
+        },
+        {
+          "path": "02-Areas/材料科学/04_变形与回复再结晶/03_回复与再结晶.md",
+          "sha256": "d4d06c58b9a867c7dd521f02f8d67717b5570b9380d72af729e6600ff61dc6de",
+          "managed_area": false,
+          "derived_from": ""
+        },
+        {
+          "path": "02-Areas/材料科学/04_变形与回复再结晶/04_热变形与动态回复、再结晶.md",
+          "sha256": "7eab7da6fbdbdc3c8466027e1333615f73881f30e42d976adeb1ae56733770cd",
+          "managed_area": false,
+          "derived_from": ""
+        },
+        {
+          "path": "02-Areas/材料科学/04_变形与回复再结晶/05_陶瓷材料塑性变形.md",
+          "sha256": "68f9bd15cd32fcacc1b367ac3279f66069bf92a6c0fe4e832a5d46cd2b6509f8",
+          "managed_area": false,
+          "derived_from": ""
+        },
+        {
+          "path": "02-Areas/材料科学/05_单组元相图及纯晶体的凝固/01_单元系相变的热力学及相平衡.md",
+          "sha256": "af9493406df9390175a1613e7af4a91b1ea8320f83330c82c840df8f33b4ae0e",
+          "managed_area": false,
+          "derived_from": ""
+        },
+        {
+          "path": "02-Areas/材料科学/05_单组元相图及纯晶体的凝固/02_纯晶体的凝固.md",
+          "sha256": "9870279c24249af23f7674f738454259bf788ee765e81e75a9ad77d8c9390066",
+          "managed_area": false,
+          "derived_from": ""
+        },
+        {
+          "path": "02-Areas/材料科学/06_二元相图与合金的凝固/01_二元相图基本知识.md",
+          "sha256": "1cbebc4e2554654a4a4da9578b7f431549864097f4f0218434b2a4c650ab366e",
+          "managed_area": false,
+          "derived_from": ""
+        },
+        {
+          "path": "02-Areas/材料科学/06_二元相图与合金的凝固/02_相图热力学的基本要点.md",
+          "sha256": "bf277ae5971a44b2502b8e2bfbba0d06d9d9ceb71b9da3df53703539ee6b4e17",
+          "managed_area": false,
+          "derived_from": ""
+        },
+        {
+          "path": "02-Areas/材料科学/06_二元相图与合金的凝固/03_二元相图分析.md",
+          "sha256": "a657bcf0a2c5a3d6f32ef4475066ffce29e0fe3a44e130e432745d257c9b3ac1",
+          "managed_area": false,
+          "derived_from": ""
+        },
+        {
+          "path": "02-Areas/材料科学/06_二元相图与合金的凝固/04_铁碳相图.md",
+          "sha256": "b16f7a0fe9aa888b80a1c664f63a6784475bdf9ca8fc4470c660f416648163fa",
+          "managed_area": false,
+          "derived_from": ""
+        },
+        {
+          "path": "02-Areas/材料科学/06_二元相图与合金的凝固/05_二元合金的凝固理论.md",
+          "sha256": "a6cc839abab4a03c8b47cc10400ac392e532cabd9f67280858bf6712a530efef",
+          "managed_area": false,
+          "derived_from": ""
+        },
+        {
+          "path": "02-Areas/材料科学/06_二元相图与合金的凝固/06_合金铸锭（件）的组织与缺陷.md",
+          "sha256": "19c9f82c7166978431d8fc2787d2747e2935802a73c1c69851730f893402553a",
+          "managed_area": false,
+          "derived_from": ""
+        },
+        {
+          "path": "02-Areas/材料科学/07_三元相图/01_三元相图基本知识.md",
+          "sha256": "6836b2eef653b101f7895d59b07ebd326155ec1fa91ca7bef2ac8313d94af49e",
+          "managed_area": false,
+          "derived_from": ""
+        },
+        {
+          "path": "02-Areas/材料科学/07_三元相图/02_三元匀晶相图.md",
+          "sha256": "f375f88069800ef1308cfcdfccc8e47d3cc54b01f93bd18ba660bfabda28f70f",
+          "managed_area": false,
+          "derived_from": ""
+        },
+        {
+          "path": "02-Areas/材料科学/07_三元相图/03_固态互不溶解的三元共晶相图.md",
+          "sha256": "9b07d9d6079d45503237f2b73315ab199252f03ebcf3b9bd6efcc78f638fed7e",
+          "managed_area": false,
+          "derived_from": ""
+        },
+        {
+          "path": "02-Areas/材料科学/07_三元相图/04_固态有限互溶的三元共晶相图.md",
+          "sha256": "6e1f130b975745ff1f31a7948bf2e0fd958830463e2e55dcbe84f775c3829b34",
+          "managed_area": false,
+          "derived_from": ""
+        },
+        {
+          "path": "02-Areas/材料科学/07_三元相图/05_两个共晶型二元系和一个匀晶型二元系构成的三元相图.md",
+          "sha256": "d2ca0867f92badf3fdb7c061490a1fb86e794c2a9831f3ed5eec6b677d046db6",
+          "managed_area": false,
+          "derived_from": ""
+        },
+        {
+          "path": "02-Areas/材料科学/07_三元相图/06_包共晶型三元系相图.md",
+          "sha256": "f5967fb41abd6af59e982b2e0cca1b1f19bf27e85b063e87165738879756798a",
+          "managed_area": false,
+          "derived_from": ""
+        },
+        {
+          "path": "02-Areas/材料科学/07_三元相图/07_具有四相平衡包晶转变的三元系相图.md",
+          "sha256": "5475cba63074d8c9587123263a7b8748683662c80b930b58b0f1d7060bb6c816",
+          "managed_area": false,
+          "derived_from": ""
+        },
+        {
+          "path": "02-Areas/材料科学/07_三元相图/08_形成稳定化合物的三元系相图.md",
+          "sha256": "a43b6521d5760a9c8f4a68c3bd4512e536163725a2108fa7e9e86cfdc6714822",
+          "managed_area": false,
+          "derived_from": ""
+        },
+        {
+          "path": "02-Areas/材料科学/07_三元相图/09_三元相图举例.md",
+          "sha256": "dbea3a1a2dbb612f09c6d5ae6926a9021ec801a8a628c917af660823a14d2d93",
+          "managed_area": false,
+          "derived_from": ""
+        },
+        {
+          "path": "02-Areas/材料科学/07_三元相图/10_三元相图小结.md",
+          "sha256": "c67cf95a3dd31306617f9fe99a039a5241881c1fccb7054282c60ed8454e0de6",
+          "managed_area": false,
+          "derived_from": ""
+        },
+        {
+          "path": "02-Areas/材料科学/08_固态相变/01_固态相变的特点及分类.md",
+          "sha256": "6b728ea4d8c98e37f14ca8ba6f10828744431a06cbc1bddd29b4e1919b2b1f49",
+          "managed_area": false,
+          "derived_from": ""
+        },
+        {
+          "path": "02-Areas/材料科学/08_固态相变/02_过饱和固溶体的分解.md",
+          "sha256": "18ff1c21d05b514e51c6b51439958303e1919ebc16ee4352911751857f6b870c",
+          "managed_area": false,
+          "derived_from": ""
+        },
+        {
+          "path": "02-Areas/材料科学/08_固态相变/03_马氏体转变.md",
+          "sha256": "f29faa8c8d79d2fe68a54864b490ff4119abf39a1689076db5df6b04551a636c",
+          "managed_area": false,
+          "derived_from": ""
+        },
+        {
+          "path": "02-Areas/材料科学/08_固态相变/04_贝氏体转变.md",
+          "sha256": "c3944349797137fa52a13a27dfa97a27080432ddb8079ffa68eeef14f5a0614f",
+          "managed_area": false,
+          "derived_from": ""
+        },
+        {
+          "path": "02-Areas/材料科学/08_固态相变/05_珠光体转变.md",
+          "sha256": "ec539f2a35588b36d9c442aef4e87f83872cf20debd9f72168797df6802a8fa3",
+          "managed_area": false,
+          "derived_from": ""
+        },
+        {
+          "path": "02-Areas/材料科学/09_高分子结构/01_高分子结构.md",
+          "sha256": "aefdd03a34f853309bf5228b11b38e31ea3521ab0a671520f00bdcfc2caa0489",
+          "managed_area": false,
+          "derived_from": ""
+        },
+        {
+          "path": "02-Areas/材料科学/09_高分子结构/02_高分子链.md",
+          "sha256": "c21b510bfd17f7bd45e62ae2c6d113a250905b22f81b8893770e710c2d8c6623",
+          "managed_area": false,
+          "derived_from": ""
+        },
+        {
+          "path": "02-Areas/材料科学/09_高分子结构/03_高分子凝聚态结构.md",
+          "sha256": "2b3c75deea8d3493111ef6fd7efa4f89ab1ead25df9efda0b9c268380b734859",
+          "managed_area": false,
+          "derived_from": ""
+        }
+      ]
+    },
+    "v3": {
+      "preflight": {
+        "status": "OK",
+        "path": ".harness/runs/v3-preflight-20260817-171840.json",
+        "payload": {
+          "schema": "researchkb-v3-preflight/v1",
+          "version": "RESEARCHKB_V3_2026-08-12",
+          "checked_at": "2026-08-17T17:18:39+08:00",
+          "status": "PASS",
+          "checks": {
+            "workspace_root_exists": true,
+            "harness_root_exists": true,
+            "vault_exists": true,
+            "agents_root_exists": true,
+            "workspace_boundary_rule": true,
+            "config_exists": true,
+            "candidate_roots_exist": true,
+            "formal_roots_exist": true,
+            "zotero_read_only": true,
+            "rss_disabled_until_review": true,
+            "horizon_staging_read_only": true
+          },
+          "workspace": "F:\\ResearchKB",
+          "harness": "F:\\ResearchKB\\.harness",
+          "vault": "F:\\ResearchKB",
+          "protected": {
+            "sha256": "520b50b3376b4f2b4ab8808458cf9285c26f98647d9b5c6ce5c36b69a4af00a9",
+            "files": 298,
+            "excluded": [
+              ".harness",
+              "00-Ideas/v3-auto",
+              "03-Resources/v3-auto"
+            ]
+          },
+          "candidate_files": 0
+        }
+      },
+      "lint": {
+        "status": "OK",
+        "path": ".harness/runs/v3-lint-20260817-171840.json",
+        "payload": {
+          "schema": "researchkb-v3-lint/v1",
+          "status": "PASS",
+          "files": 0,
+          "errors": [],
+          "warnings": [],
+          "metrics": {
+            "unique_source_identities": 0
+          },
+          "checked_at": "2026-08-17T17:18:40+08:00",
+          "vault": "F:\\ResearchKB",
+          "run_id": "v3-lint-20260817-171840"
+        }
+      }
+    },
+    "configuration": {
+      "window_days": 90,
+      "distinct_tasks_threshold": 5,
+      "auto_areas_apply": true
+    }
+  },
+  "question_batches": [
+    {
+      "batch_id": "batch-04-area-changes",
+      "category": "area_changes",
+      "summary": "Areas 文件 51 个，受控自动文件 0 个，本次写入 0 个。",
+      "status": "pending",
+      "questions": [
+        {
+          "question_id": "batch-04-area-changes-q1",
+          "prompt": "Areas 的新增或更新是否保持了 Curated → Areas 的来源追踪和 SHA-256？"
+        },
+        {
+          "question_id": "batch-04-area-changes-q2",
+          "prompt": "人工 Areas 是否保持不变，自动内容是否只位于 _Codex-Auto 或受控 managed 区域？"
+        },
+        {
+          "question_id": "batch-04-area-changes-q3",
+          "prompt": "哪些 Area 需要保留、调整、暂停自动更新或进入人工处理？"
+        }
+      ],
+      "answers": []
+    },
+    {
+      "batch_id": "batch-06-thresholds",
+      "category": "threshold_and_rules",
+      "summary": "当前升级窗口为 90 天，distinct_tasks 阈值为 5。",
+      "status": "pending",
+      "questions": [
+        {
+          "question_id": "batch-06-thresholds-q1",
+          "prompt": "滚动 90 天、distinct_tasks >= 5 的升级规则是否继续适合你的工作节奏？"
+        },
+        {
+          "question_id": "batch-06-thresholds-q2",
+          "prompt": "是否需要提出阈值或窗口调整？如果需要，请给出目标值、理由和生效范围；未明确的建议不会自动执行。"
+        },
+        {
+          "question_id": "batch-06-thresholds-q3",
+          "prompt": "RAW 180 天、Reports 空间阈值、季度 Review 频率和 Archive 只移动不删除的边界是否保持？"
+        }
+      ],
+      "answers": []
+    }
+  ],
+  "answers": [],
+  "proposed_actions": [],
+  "actions_path": ".harness/staging/knowledge-lifecycle/quarterly-review/2026-Q2/approved-actions.json",
+  "apply_authorization": {
+    "required": true,
+    "confirmation": "确认执行季度 Review 草案",
+    "formal_vault_writes": false,
+    "permanent_delete": false
+  },
+  "deletions": 0
+}

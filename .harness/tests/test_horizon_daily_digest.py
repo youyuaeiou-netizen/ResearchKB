@@ -47,12 +47,11 @@ class HorizonDailyDigestTests(unittest.TestCase):
         self.assertFalse(self.config["output_policy"]["allow_overwrite"])
         self.assertFalse(self.config["output_policy"]["formal_knowledge_promotion"])
 
-    def test_weekly_config_declares_canonical_entrypoint_and_legacy_alias(self):
+    def test_weekly_config_declares_only_the_canonical_entrypoint(self):
         self.assertEqual(self.config["config_id"], "horizon-weekly-digest")
         self.assertEqual(self.config["schedule_owner"], "horizon_weekly_digest")
         self.assertTrue(self.config["canonical_task"].endswith("run-horizon-weekly-digest.ps1"))
-        self.assertEqual(len(self.config["legacy_task_aliases"]), 1)
-        self.assertTrue(self.config["legacy_task_aliases"][0].endswith("run-horizon-daily-digest.ps1"))
+        self.assertNotIn("legacy_task_aliases", self.config)
 
     def test_openalex_and_crossref_are_not_active_registry_sources(self):
         registry = MODULE.v3.load_registry(MODULE.HARNESS_ROOT / "config" / "source-registry.yaml")

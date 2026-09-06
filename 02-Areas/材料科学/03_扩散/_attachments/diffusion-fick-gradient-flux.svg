@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 430" role="img" aria-labelledby="title desc">
+  <title id="title">浓度梯度与扩散通量</title>
+  <desc id="desc">浓度沿 x 方向降低时，扩散通量与浓度梯度方向相反。</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#111"/>
+    </marker>
+  </defs>
+  <rect width="760" height="430" fill="white"/>
+  <g stroke="#111" stroke-width="2" fill="none">
+    <line x1="90" y1="350" x2="690" y2="350" marker-end="url(#arrow)"/>
+    <line x1="90" y1="350" x2="90" y2="55" marker-end="url(#arrow)"/>
+    <path d="M125 90 L650 300" stroke-width="4"/>
+    <line x1="250" y1="140" x2="330" y2="172" stroke-dasharray="7 6"/>
+    <line x1="430" y1="212" x2="510" y2="244" stroke-dasharray="7 6"/>
+    <line x1="180" y1="385" x2="245" y2="385" marker-end="url(#arrow)"/>
+    <line x1="300" y1="385" x2="365" y2="385" marker-end="url(#arrow)"/>
+    <line x1="420" y1="385" x2="485" y2="385" marker-end="url(#arrow)"/>
+    <line x1="540" y1="385" x2="605" y2="385" marker-end="url(#arrow)"/>
+  </g>
+  <g fill="#111" font-family="sans-serif" font-size="24">
+    <text x="55" y="65">ρ</text>
+    <text x="680" y="382">x</text>
+    <text x="270" y="125">dρ/dx &lt; 0</text>
+    <text x="370" y="420">J = −D(dρ/dx) &gt; 0</text>
+    <text x="160" y="330">高浓度区</text>
+    <text x="540" y="285">低浓度区</text>
+    <text x="250" y="60" font-size="20">通量方向与浓度梯度方向相反</text>
+  </g>
+</svg>

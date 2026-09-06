@@ -1,0 +1,39 @@
+{
+  "schema": "researchkb-knowledge-lifecycle-state/v1",
+  "generated_at": "2026-08-23T20:03:40+08:00",
+  "status": "active",
+  "track_id": "phase-diagram-solidification-transformation",
+  "track_name": "相图—凝固—相变",
+  "curated_count": 0,
+  "candidate_count": 0,
+  "hold_count": 0,
+  "decisions": [],
+  "areas_writes": 0,
+  "deletions": 0,
+  "graph_path": "02-Areas/_Codex-Auto/基础学习/关系图.md",
+  "formal_apply": true,
+  "last_maintenance_id": "knowledge-iteration-2026-W34-20260823-200341",
+  "last_maintenance_at": "2026-08-23T20:03:41+08:00",
+  "last_maintenance_summary": {
+    "status": "OK",
+    "report_period": "2026-W34",
+    "raw_count": 17,
+    "curated_count": 0,
+    "report_unit_count": 71,
+    "formal_report_writes": 0,
+    "report_archive_moves": 0,
+    "raw_archive_moves": 0,
+    "deletions": 0
+  },
+  "last_compile_id": "knowledge-compile-20260831-224647",
+  "last_compile_at": "2026-08-31T22:46:47+08:00",
+  "last_compile_summary": {
+    "status": "CURATED_APPLIED",
+    "raw_count": 17,
+    "unique_source_count": 17,
+    "proposed_count": 5,
+    "hold_count": 12,
+    "skipped_count": 0,
+    "formal_card_writes": 5
+  }
+}

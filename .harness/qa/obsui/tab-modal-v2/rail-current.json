@@ -1,0 +1,36 @@
+{
+  "railBefore": {
+    "buttons": [
+      {
+        "aria": "实时摘要向左滚动",
+        "disabled": true,
+        "text": ""
+      },
+      {
+        "aria": "实时摘要向右滚动",
+        "disabled": false,
+        "text": ""
+      }
+    ],
+    "clientWidth": 823,
+    "scrollLeft": 0,
+    "scrollWidth": 1298
+  },
+  "railAfter": {
+    "buttons": [
+      {
+        "aria": "实时摘要向左滚动",
+        "disabled": false,
+        "text": ""
+      },
+      {
+        "aria": "实时摘要向右滚动",
+        "disabled": true,
+        "text": ""
+      }
+    ],
+    "clientWidth": 823,
+    "scrollLeft": 475.2000122070313,
+    "scrollWidth": 1298
+  }
+}

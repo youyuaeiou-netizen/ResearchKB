@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 450" role="img" aria-labelledby="title desc">
+  <title id="title">两端成分不受扩散影响的无限扩散偶</title>
+  <desc id="desc">初始阶跃浓度在两个时刻因常数扩散系数而展宽，远端浓度保持不变。</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#111"/>
+    </marker>
+  </defs>
+  <rect width="760" height="450" fill="white"/>
+  <g stroke="#111" stroke-width="2" fill="none">
+    <line x1="90" y1="365" x2="700" y2="365" marker-end="url(#arrow)"/>
+    <line x1="380" y1="410" x2="380" y2="55" marker-end="url(#arrow)"/>
+    <path d="M110 300 L380 300 L380 105 L680 105" stroke-dasharray="9 7" stroke-width="3"/>
+    <path d="M110 300 C245 300 305 293 345 262 C367 245 380 225 380 205 C380 185 393 165 415 148 C455 117 520 105 680 105" stroke-width="3"/>
+    <path d="M110 300 C185 300 245 296 285 280 C330 262 355 237 380 205 C405 173 430 148 475 130 C530 108 600 105 680 105" stroke-width="3"/>
+    <line x1="380" y1="365" x2="380" y2="85" stroke-dasharray="6 6"/>
+  </g>
+  <g fill="#111" font-family="sans-serif" font-size="23">
+    <text x="57" y="72">ρ</text>
+    <text x="686" y="399">x</text>
+    <text x="393" y="92">x = 0</text>
+    <text x="115" y="290">ρ₂</text>
+    <text x="650" y="95">ρ₁</text>
+    <text x="500" y="150">t₁</text>
+    <text x="560" y="205">t₂</text>
+    <text x="112" y="420">初始阶跃分布</text>
+    <text x="505" y="330">t 增大，过渡区变宽</text>
+  </g>
+</svg>

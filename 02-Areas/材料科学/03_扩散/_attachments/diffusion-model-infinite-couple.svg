@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="620" viewBox="0 0 1200 620">
+  <defs>
+    <marker id="axis-arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#334155"/>
+    </marker>
+  </defs>
+  <rect width="1200" height="620" fill="#ffffff"/>
+  <text x="600" y="42" text-anchor="middle" font-family="sans-serif" font-size="28" font-weight="700" fill="#0f172a">两根无限长棒相互扩散的物理模型</text>
+  <text x="600" y="78" text-anchor="middle" font-family="sans-serif" font-size="18" fill="#475569">一维、恒温、单相、常数 D；两端足够远而保持初始浓度</text>
+
+  <rect x="110" y="140" width="490" height="120" fill="#dbeafe" stroke="#2563eb" stroke-width="2"/>
+  <rect x="600" y="140" width="490" height="120" fill="#ffedd5" stroke="#ea580c" stroke-width="2"/>
+  <line x1="600" y1="126" x2="600" y2="280" stroke="#0f172a" stroke-width="4"/>
+  <text x="355" y="185" text-anchor="middle" font-family="sans-serif" font-size="25" font-weight="700" fill="#1d4ed8">左侧半无限区域</text>
+  <text x="355" y="226" text-anchor="middle" font-family="sans-serif" font-size="24" fill="#1e3a8a">x &lt; 0，ρ = ρ₂</text>
+  <text x="845" y="185" text-anchor="middle" font-family="sans-serif" font-size="25" font-weight="700" fill="#c2410c">右侧半无限区域</text>
+  <text x="845" y="226" text-anchor="middle" font-family="sans-serif" font-size="24" fill="#7c2d12">x &gt; 0，ρ = ρ₁</text>
+  <text x="600" y="112" text-anchor="middle" font-family="sans-serif" font-size="21" font-weight="700" fill="#0f172a">连接界面 x = 0</text>
+  <text x="118" y="295" text-anchor="middle" font-family="sans-serif" font-size="18" fill="#475569">x → −∞</text>
+  <text x="1082" y="295" text-anchor="middle" font-family="sans-serif" font-size="18" fill="#475569">x → +∞</text>
+
+  <line x1="120" y1="350" x2="1080" y2="350" stroke="#334155" stroke-width="3" marker-end="url(#axis-arrow)"/>
+  <line x1="600" y1="339" x2="600" y2="361" stroke="#334155" stroke-width="3"/>
+  <text x="1090" y="357" font-family="sans-serif" font-size="22" fill="#0f172a">x</text>
+  <text x="585" y="386" text-anchor="end" font-family="sans-serif" font-size="18" fill="#475569">−方向</text>
+  <text x="615" y="386" font-family="sans-serif" font-size="18" fill="#475569">+方向</text>
+
+  <rect x="160" y="430" width="880" height="120" rx="12" fill="#f8fafc" stroke="#cbd5e1"/>
+  <text x="190" y="465" font-family="sans-serif" font-size="21" font-weight="700" fill="#0f172a">初始与演化</text>
+  <text x="190" y="503" font-family="sans-serif" font-size="19" fill="#334155">t = 0：界面两侧分别为 ρ₂ 与 ρ₁；t &gt; 0：界面附近的浓度阶跃逐渐平滑</text>
+  <text x="190" y="535" font-family="sans-serif" font-size="19" fill="#334155">扩散方向由两侧浓度的实际大小决定，远离界面的边界仍近似保持不变。</text>
+</svg>

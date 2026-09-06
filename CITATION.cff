@@ -1,0 +1,10 @@
+cff-version: 1.2.0
+message: "If you use ResearchKB, please cite this software repository."
+type: software
+title: ResearchKB
+version: 0.1.0-dev
+date-released: 2026-08-19
+authors:
+  - name: ResearchKB contributors
+repository-code: https://github.com/youyuaeiou-netizen/ResearchKB
+license: MIT

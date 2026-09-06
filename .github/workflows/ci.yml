@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install test dependency
+        shell: pwsh
+        run: python -m pip install -r .harness/requirements-test.txt
+      - name: Run regression tests
+        shell: pwsh
+        run: python -m unittest discover -s .harness/tests -v
+      - name: Verify read-only weekly path
+        shell: pwsh
+        run: '& ''C:\Program Files\PowerShell\7\pwsh.exe'' -NoLogo -NoProfile -File .harness\tasks\run-researchkb-weekly.ps1 -NoWrite'

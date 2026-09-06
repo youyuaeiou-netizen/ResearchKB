@@ -1,0 +1,17 @@
+name: Feature request
+description: 提议一个与材料科研工作流相关的可验证改进
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 使用场景与待解决问题
+    validations:
+      required: true
+  - type: textarea
+    id: boundary
+    attributes:
+      label: 安全边界与验收方式
+      description: 说明它不会覆盖人工内容、泄露数据或产生未说明的外部成本。
+    validations:
+      required: true

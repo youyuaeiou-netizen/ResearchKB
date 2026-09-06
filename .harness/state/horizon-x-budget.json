@@ -1,0 +1,73 @@
+{
+  "schema": "researchkb-horizon-x-budget/v3",
+  "month": "2026-08",
+  "reserved_actor_runs": 6,
+  "reserved_items": 1530,
+  "reserved_cost_usd": 0.0,
+  "actual_items": 7,
+  "estimated_actual_cost_usd": 1.575,
+  "reported_actual_cost_usd": 1.383,
+  "seen_tweet_ids": [
+    "twitter:tweet:2087636580353577332",
+    "twitter:tweet:2087630260586029099",
+    "twitter:tweet:2087560319770014142",
+    "twitter:tweet:2087537013813567663",
+    "twitter:tweet:2087900253303218280",
+    "twitter:tweet:2088309729852260574",
+    "twitter:tweet:2088294771584331972"
+  ],
+  "days": {
+    "2026-08-13": {
+      "actor_runs": 1,
+      "reserved_items": 100,
+      "actual_items": 4,
+      "estimated_actual_cost_usd": 0.306
+    },
+    "2026-08-14": {
+      "actor_runs": 1,
+      "reserved_items": 100,
+      "actual_items": 1,
+      "estimated_actual_cost_usd": 0.009
+    },
+    "2026-08-15": {
+      "actor_runs": 1,
+      "reserved_items": 100,
+      "actual_items": 2,
+      "estimated_actual_cost_usd": 0.012
+    },
+    "2026-08-16": {
+      "actor_runs": 1,
+      "reserved_items": 410,
+      "actual_items": 0,
+      "estimated_actual_cost_usd": 0.006
+    },
+    "2026-08-17": {
+      "actor_runs": 1,
+      "reserved_items": 410,
+      "actual_items": 0,
+      "estimated_actual_cost_usd": 1.236
+    },
+    "2026-08-23": {
+      "actor_runs": 1,
+      "reserved_items": 410,
+      "actual_items": 0,
+      "estimated_actual_cost_usd": 0.006
+    }
+  },
+  "last_reservation_at": "2026-08-23T12:03:20+08:00",
+  "last_reservation_users": 27,
+  "last_released_start_reservation_at": "2026-08-13T18:23:14+08:00",
+  "last_result_at": "2026-08-23T12:04:19+08:00",
+  "last_result_items": 0,
+  "last_result_dataset_items": 0,
+  "last_result_estimated_charge_usd": 0.006,
+  "last_result_reported_charge_usd": 0.0,
+  "last_released_zero_cost_invalid_run_at": "2026-08-13T18:23:14+08:00",
+  "last_released_zero_cost_invalid_run_reason": "Apify run kJ5g6rhYxJSF8RlTL had a confirmed zero charge and rejected invalid since/until input.",
+  "last_successful_until_utc": "2026-08-15T04:04:00Z",
+  "last_cursor_repair_at": "2026-08-17T01:17:08+08:00",
+  "last_cursor_repair_reason": "Rewound from the confirmed 27-account Scweet search empty result and the subsequent profile-mode partial-coverage result; the next valid run must recheck the missed interval and no automatic retry was performed.",
+  "last_result_status": "ERROR_PARTIAL_ACTOR_COVERAGE",
+  "last_cost_reservation_settled_at": "2026-08-23T12:04:19+08:00",
+  "next_user_rotation_offset": 6
+}

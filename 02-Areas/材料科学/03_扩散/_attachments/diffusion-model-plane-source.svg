@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="560" viewBox="0 0 1100 560">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#7c3aed"/>
+    </marker>
+  </defs>
+  <rect width="1100" height="560" fill="#ffffff"/>
+  <text x="550" y="42" text-anchor="middle" font-family="sans-serif" font-size="28" font-weight="700" fill="#0f172a">平面源扩散的物理模型</text>
+  <text x="550" y="76" text-anchor="middle" font-family="sans-serif" font-size="18" fill="#475569">总量 M 集中在 x = 0 的薄平面上，随后向两侧无限介质扩散</text>
+
+  <rect x="100" y="165" width="450" height="125" fill="#e0f2fe" stroke="#0284c7" stroke-width="2"/>
+  <rect x="550" y="165" width="450" height="125" fill="#fef3c7" stroke="#d97706" stroke-width="2"/>
+  <rect x="538" y="135" width="24" height="185" fill="#a855f7" stroke="#6b21a8" stroke-width="2"/>
+  <text x="325" y="220" text-anchor="middle" font-family="sans-serif" font-size="24" font-weight="700" fill="#075985">无限介质</text>
+  <text x="325" y="260" text-anchor="middle" font-family="sans-serif" font-size="22" fill="#0c4a6e">x &lt; 0</text>
+  <text x="775" y="220" text-anchor="middle" font-family="sans-serif" font-size="24" font-weight="700" fill="#92400e">无限介质</text>
+  <text x="775" y="260" text-anchor="middle" font-family="sans-serif" font-size="22" fill="#78350f">x &gt; 0</text>
+  <text x="550" y="112" text-anchor="middle" font-family="sans-serif" font-size="22" font-weight="700" fill="#6b21a8">薄平面源 x = 0，面密度总量 M</text>
+
+  <line x1="525" y1="350" x2="170" y2="350" stroke="#7c3aed" stroke-width="4" marker-end="url(#arrow)"/>
+  <line x1="575" y1="350" x2="930" y2="350" stroke="#7c3aed" stroke-width="4" marker-end="url(#arrow)"/>
+  <text x="550" y="390" text-anchor="middle" font-family="sans-serif" font-size="21" fill="#5b21b6">两侧对称扩散；|x| → ∞ 时 ρ → 0</text>
+  <text x="550" y="445" text-anchor="middle" font-family="sans-serif" font-size="20" fill="#334155">t = 0：ρ 仅集中在 x = 0；t &gt; 0：浓度峰降低、分布变宽，但 ∫ρ(x,t)dx = M</text>
+</svg>

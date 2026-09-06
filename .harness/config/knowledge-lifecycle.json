@@ -71,6 +71,32 @@
     "managed_marker": "CODEX MANAGED: AREA",
     "allow_formal_apply": true
   },
+  "foundation_learning": {
+    "enabled": true,
+    "track_id": "phase-diagram-solidification-transformation",
+    "display_name": "相图—凝固—相变",
+    "auto_apply": true,
+    "auto_root": "02-Areas/_Codex-Auto/基础学习",
+    "all_curated_as_candidates": true,
+    "default_topic": "扩展探索",
+    "topics": [
+      {
+        "id": "phase-diagrams",
+        "title": "相图",
+        "keywords": ["相图", "phase diagram", "相平衡", "杠杆定律", "相律", "二元系"]
+      },
+      {
+        "id": "solidification",
+        "title": "凝固",
+        "keywords": ["凝固", "solidification", "结晶", "形核", "枝晶", "偏析"]
+      },
+      {
+        "id": "phase-transformations",
+        "title": "相变",
+        "keywords": ["相变", "phase transformation", "析出", "马氏体", "共析", "时效"]
+      }
+    ]
+  },
   "retention": {
     "raw_max_age_days": 180,
     "report_keep_latest": 12,
@@ -83,10 +109,10 @@
   "policy": {
     "default_anomaly_action": "hold",
     "allow_permanent_delete": false,
-    "auto_curated_promotion": false,
+    "auto_curated_promotion": true,
     "auto_areas_promotion": true,
     "formal_report_write_enabled": true,
-    "usage_recording_enabled": false
+    "usage_recording_enabled": true
   },
   "review": {
     "timezone": "Asia/Shanghai",

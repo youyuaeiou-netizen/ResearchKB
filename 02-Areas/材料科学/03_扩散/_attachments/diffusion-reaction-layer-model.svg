@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="560" viewBox="0 0 1200 560">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#b45309"/>
+    </marker>
+  </defs>
+  <rect width="1200" height="560" fill="#ffffff"/>
+  <text x="600" y="42" text-anchor="middle" font-family="sans-serif" font-size="28" font-weight="700" fill="#0f172a">反应扩散的表面—内部层状模型</text>
+  <text x="600" y="76" text-anchor="middle" font-family="sans-serif" font-size="18" fill="#475569">定性示意：具体相序和界面成分由相平衡与扩散条件共同决定</text>
+
+  <rect x="110" y="150" width="110" height="150" fill="#fed7aa" stroke="#c2410c" stroke-width="2"/>
+  <rect x="220" y="150" width="250" height="150" fill="#fecaca" stroke="#dc2626" stroke-width="2"/>
+  <rect x="470" y="150" width="240" height="150" fill="#ddd6fe" stroke="#7c3aed" stroke-width="2"/>
+  <rect x="710" y="150" width="380" height="150" fill="#dbeafe" stroke="#2563eb" stroke-width="2"/>
+  <text x="165" y="210" text-anchor="middle" font-family="sans-serif" font-size="22" font-weight="700" fill="#9a3412">表面供给</text>
+  <text x="165" y="250" text-anchor="middle" font-family="sans-serif" font-size="20" fill="#7c2d12">外部组元</text>
+  <text x="345" y="210" text-anchor="middle" font-family="sans-serif" font-size="22" font-weight="700" fill="#991b1b">反应相/中间相</text>
+  <text x="345" y="250" text-anchor="middle" font-family="sans-serif" font-size="19" fill="#7f1d1d">相界面可移动</text>
+  <text x="590" y="210" text-anchor="middle" font-family="sans-serif" font-size="22" font-weight="700" fill="#5b21b6">固溶体层</text>
+  <text x="590" y="250" text-anchor="middle" font-family="sans-serif" font-size="19" fill="#4c1d95">浓度连续变化</text>
+  <text x="900" y="210" text-anchor="middle" font-family="sans-serif" font-size="22" font-weight="700" fill="#1d4ed8">基体</text>
+  <text x="900" y="250" text-anchor="middle" font-family="sans-serif" font-size="19" fill="#1e3a8a">低浓度远端</text>
+  <text x="110" y="330" text-anchor="middle" font-family="sans-serif" font-size="20" fill="#0f172a">x = 0</text>
+  <text x="1090" y="330" text-anchor="middle" font-family="sans-serif" font-size="20" fill="#475569">x &gt; 0</text>
+  <line x1="165" y1="365" x2="590" y2="365" stroke="#b45309" stroke-width="4" marker-end="url(#arrow)"/>
+  <text x="380" y="400" text-anchor="middle" font-family="sans-serif" font-size="21" fill="#92400e">组元向内部迁移</text>
+  <line x1="470" y1="430" x2="470" y2="485" stroke="#dc2626" stroke-width="3" marker-end="url(#arrow)"/>
+  <line x1="710" y1="430" x2="710" y2="485" stroke="#7c3aed" stroke-width="3" marker-end="url(#arrow)"/>
+  <text x="470" y="520" text-anchor="middle" font-family="sans-serif" font-size="18" fill="#7f1d1d">反应界面</text>
+  <text x="710" y="520" text-anchor="middle" font-family="sans-serif" font-size="18" fill="#4c1d95">相界面</text>
+</svg>

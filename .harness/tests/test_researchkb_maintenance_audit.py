@@ -120,42 +120,10 @@ class ResearchKBMaintenanceAuditTests(unittest.TestCase):
             self.assertEqual(raw["action"], "hold")
             self.assertEqual(ordinary["action"], "keep")
 
-    def test_stale_state_and_duplicate_wrappers_are_reported_without_mutation(self):
+    def test_weekly_schedule_ownership_has_no_legacy_daily_conflict(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             write(root / ".harness" / "config" / "placeholder.json", "{}")
-            write(
-                root / ".harness" / "state" / "horizon-daily-digest-state.json",
-                json.dumps({"last_output_path": str(root / "03-Resources" / "horizon" / "Daily" / "missing.md")}),
-            )
-            wrapper = "$script = 'horizon_daily_digest.py'\n"
-            write(root / ".harness" / "tasks" / "run-horizon-daily-digest.ps1", wrapper)
-            write(root / ".harness" / "tasks" / "run-horizon-weekly-digest.ps1", wrapper)
-            write(
-                root / ".harness" / "config" / "source-registry.yaml",
-                json.dumps({"schedules": {"weekly_review": "Sunday 20:00"}}),
-            )
-            write(
-                root / ".harness" / "config" / "horizon-daily-digest.json",
-                json.dumps({"schedule": {"days_of_week": ["Sunday"], "local_time": "12:00"}}),
-            )
-            policy = policy_for(root)
-            audit = MODULE.audit_workspace(root, policy)
-            kinds = {finding["kind"] for finding in audit["findings"]}
-
-            self.assertIn("stale-state-output", kinds)
-            self.assertIn("duplicate-horizon-wrapper", kinds)
-            self.assertIn("schedule-drift", kinds)
-            self.assertFalse((root / "03-Resources" / "horizon" / "Daily").exists())
-
-    def test_explicit_schedule_ownership_and_alias_remove_false_conflicts(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            write(root / ".harness" / "config" / "placeholder.json", "{}")
-            write(
-                root / ".harness" / "tasks" / "run-horizon-daily-digest.ps1",
-                "& (Join-Path $PSScriptRoot 'run-horizon-weekly-digest.ps1')\n",
-            )
             write(
                 root / ".harness" / "tasks" / "run-horizon-weekly-digest.ps1",
                 "$script = 'horizon_daily_digest.py'\n",
@@ -173,7 +141,7 @@ class ResearchKBMaintenanceAuditTests(unittest.TestCase):
                 ),
             )
             write(
-                root / ".harness" / "config" / "horizon-daily-digest.json",
+                root / ".harness" / "config" / "horizon-weekly-digest.json",
                 json.dumps({"schedule": {"days_of_week": ["Sunday"], "local_time": "12:00"}}),
             )
             policy = policy_for(root)
@@ -182,6 +150,7 @@ class ResearchKBMaintenanceAuditTests(unittest.TestCase):
 
             self.assertNotIn("duplicate-horizon-wrapper", kinds)
             self.assertNotIn("schedule-drift", kinds)
+            self.assertNotIn("stale-state-output", kinds)
 
     def test_references_force_archive_candidate_to_hold(self):
         with tempfile.TemporaryDirectory() as directory:

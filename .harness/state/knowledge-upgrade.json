@@ -1,0 +1,14 @@
+{
+  "schema": "researchkb-upgrade-decision/v1",
+  "generated_at": "2026-08-23T20:03:43+08:00",
+  "status": "OK_EMPTY",
+  "source_aggregate_generated_at": "2026-08-23T20:03:43+08:00",
+  "window_days": 90,
+  "distinct_tasks_threshold": 5,
+  "eligible_resources": [],
+  "decisions": [],
+  "auto_areas_apply": true,
+  "areas_writes": 0,
+  "curated_writes": 0,
+  "deletions": 0
+}

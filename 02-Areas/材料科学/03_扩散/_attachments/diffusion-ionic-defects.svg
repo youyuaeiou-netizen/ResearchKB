@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 430" role="img" aria-labelledby="title desc">
+  <title id="title">离子晶体中的肖特基型和弗伦克尔型缺陷</title>
+  <desc id="desc">左图为成对阳、阴离子空位，右图为同类空位与间隙离子成对出现。</desc>
+  <rect width="820" height="430" fill="white"/>
+  <g stroke="#111" stroke-width="2" fill="none">
+    <rect x="45" y="65" width="300" height="260"/>
+    <rect x="475" y="65" width="300" height="260"/>
+    <g stroke="#aaa" stroke-width="1">
+      <path d="M95 100H295M95 150H295M95 200H295M95 250H295M95 300H295"/>
+      <path d="M95 100V300M145 100V300M195 100V300M245 100V300M295 100V300"/>
+      <path d="M525 100H725M525 150H725M525 200H725M525 250H725M525 300H725"/>
+      <path d="M525 100V300M575 100V300M625 100V300M675 100V300M725 100V300"/>
+    </g>
+  </g>
+  <g font-family="sans-serif" font-size="26" text-anchor="middle">
+    <g fill="#111">
+      <text x="95" y="110">+</text><text x="145" y="110">−</text><text x="195" y="110">+</text><text x="245" y="110">−</text><text x="295" y="110">+</text>
+      <text x="95" y="160">−</text><text x="145" y="160">+</text><text x="195" y="160">−</text><text x="245" y="160">+</text><text x="295" y="160">−</text>
+      <text x="95" y="210">+</text><text x="145" y="210">−</text><text x="195" y="210">□</text><text x="245" y="210">□</text><text x="295" y="210">−</text>
+      <text x="95" y="260">−</text><text x="145" y="260">+</text><text x="195" y="260">−</text><text x="245" y="260">+</text><text x="295" y="260">−</text>
+      <text x="95" y="310">+</text><text x="145" y="310">−</text><text x="195" y="310">+</text><text x="245" y="310">−</text><text x="295" y="310">+</text>
+    </g>
+    <g fill="#111">
+      <text x="525" y="110">+</text><text x="575" y="110">−</text><text x="625" y="110">+</text><text x="675" y="110">−</text><text x="725" y="110">+</text>
+      <text x="525" y="160">−</text><text x="575" y="160">□</text><text x="625" y="160">−</text><text x="675" y="160">+</text><text x="725" y="160">−</text>
+      <text x="525" y="210">+</text><text x="575" y="210">−</text><text x="625" y="210">+</text><text x="675" y="210">−</text><text x="725" y="210">+</text>
+      <text x="525" y="260">−</text><text x="575" y="260">+</text><text x="625" y="260">−</text><text x="675" y="260">+</text><text x="725" y="260">−</text>
+      <text x="525" y="310">+</text><text x="575" y="310">−</text><text x="625" y="310">+</text><text x="675" y="310">−</text><text x="725" y="310">+</text>
+      <text x="625" y="365">+（间隙阳离子）</text>
+    </g>
+    <text x="195" y="35">肖特基型：成对空位</text>
+    <text x="625" y="35">弗伦克尔型：空位 + 间隙离子</text>
+    <text x="195" y="390" font-size="20">阳、阴离子空位保持电中性</text>
+    <text x="625" y="420" font-size="20">同类离子离位并进入间隙</text>
+  </g>
+</svg>

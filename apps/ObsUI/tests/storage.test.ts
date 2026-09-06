@@ -1,5 +1,5 @@
 import "fake-indexeddb/auto";
-import { createBackup, createInitialState, DB_NAME, loadAppState, parseBackup, saveAppState, touch } from "../src/storage";
+import { createBackup, createInitialState, DB_NAME, loadAppState, normalizeAppState, parseBackup, saveAppState, touch } from "../src/storage";
 
 beforeEach(async () => {
   await new Promise<void>((resolve, reject) => {
@@ -38,5 +38,29 @@ describe("ObsUI v1 backup boundary", () => {
     await saveAppState(state);
     const loaded = await loadAppState();
     expect(loaded.projects[0].title).toBe("持久化后的项目");
+  });
+
+  it("migrates legacy task status and priority fields without dropping user data", () => {
+    const legacy = createInitialState() as unknown as Record<string, unknown>;
+    delete legacy.targetLastOpenedMonth;
+    legacy.tasks = [{
+      id: "legacy-task",
+      title: "旧任务",
+      projectId: null,
+      dueDate: "2026-08-27",
+      status: "done",
+      priority: "high",
+      createdAt: "2026-08-20T00:00:00.000Z",
+      updatedAt: "2026-08-21T00:00:00.000Z",
+    }];
+    const migrated = normalizeAppState(legacy);
+    expect(migrated?.tasks[0]).toMatchObject({
+      id: "legacy-task",
+      status: "completed",
+      priority: 5,
+      folderPath: "",
+      completedAt: "2026-08-21T00:00:00.000Z",
+    });
+    expect(migrated?.targetLastOpenedMonth).toMatch(/^\d{4}-\d{2}$/);
   });
 });

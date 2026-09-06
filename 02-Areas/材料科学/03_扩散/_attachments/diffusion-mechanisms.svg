@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1260" height="520" viewBox="0 0 1260 520">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#475569"/>
+    </marker>
+    <marker id="violet-arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#7c3aed"/>
+    </marker>
+  </defs>
+  <rect width="1260" height="520" fill="#ffffff"/>
+  <text x="630" y="38" text-anchor="middle" font-family="sans-serif" font-size="28" font-weight="700" fill="#0f172a">三种基本扩散机制的微观模型</text>
+
+  <rect x="25" y="70" width="380" height="400" rx="14" fill="#f8fafc" stroke="#94a3b8" stroke-width="2"/>
+  <text x="215" y="112" text-anchor="middle" font-family="sans-serif" font-size="25" font-weight="700" fill="#1e3a8a">交换机制</text>
+  <text x="215" y="142" text-anchor="middle" font-family="sans-serif" font-size="17" fill="#475569">相邻原子直接交换位置</text>
+  <g fill="#cbd5e1" stroke="#64748b" stroke-width="2">
+    <circle cx="90" cy="215" r="22"/><circle cx="145" cy="215" r="22"/><circle cx="200" cy="215" r="22"/><circle cx="255" cy="215" r="22"/><circle cx="310" cy="215" r="22"/>
+    <circle cx="90" cy="275" r="22"/><circle cx="145" cy="275" r="22"/><circle cx="200" cy="275" r="22"/><circle cx="255" cy="275" r="22"/><circle cx="310" cy="275" r="22"/>
+    <circle cx="90" cy="335" r="22"/><circle cx="145" cy="335" r="22"/><circle cx="200" cy="335" r="22"/><circle cx="255" cy="335" r="22"/><circle cx="310" cy="335" r="22"/>
+  </g>
+  <circle cx="200" cy="215" r="22" fill="#2563eb" stroke="#1d4ed8" stroke-width="2"/>
+  <circle cx="255" cy="215" r="22" fill="#f97316" stroke="#c2410c" stroke-width="2"/>
+  <path d="M194 170 C245 145 285 180 265 205" fill="none" stroke="#475569" stroke-width="3" marker-end="url(#arrow)"/>
+  <path d="M261 260 C210 285 170 250 190 225" fill="none" stroke="#475569" stroke-width="3" marker-end="url(#arrow)"/>
+  <text x="215" y="420" text-anchor="middle" font-family="sans-serif" font-size="17" fill="#334155">需同时跨越较大能垒，晶格畸变明显</text>
+
+  <rect x="440" y="70" width="380" height="400" rx="14" fill="#f8fafc" stroke="#94a3b8" stroke-width="2"/>
+  <text x="630" y="112" text-anchor="middle" font-family="sans-serif" font-size="25" font-weight="700" fill="#166534">间隙机制</text>
+  <text x="630" y="142" text-anchor="middle" font-family="sans-serif" font-size="17" fill="#475569">小原子在间隙位置之间迁移</text>
+  <g fill="#cbd5e1" stroke="#64748b" stroke-width="2">
+    <circle cx="515" cy="215" r="24"/><circle cx="575" cy="215" r="24"/><circle cx="635" cy="215" r="24"/><circle cx="695" cy="215" r="24"/><circle cx="755" cy="215" r="24"/>
+    <circle cx="515" cy="315" r="24"/><circle cx="575" cy="315" r="24"/><circle cx="635" cy="315" r="24"/><circle cx="695" cy="315" r="24"/><circle cx="755" cy="315" r="24"/>
+  </g>
+  <circle cx="575" cy="265" r="11" fill="#16a34a" stroke="#166534" stroke-width="2"/>
+  <circle cx="635" cy="265" r="11" fill="#ffffff" stroke="#166534" stroke-width="2"/>
+  <path d="M585 265 L620 265" fill="none" stroke="#166534" stroke-width="3" marker-end="url(#arrow)"/>
+  <text x="630" y="420" text-anchor="middle" font-family="sans-serif" font-size="17" fill="#334155">H、C 等小原子较易迁移，大原子会引起畸变</text>
+
+  <rect x="855" y="70" width="380" height="400" rx="14" fill="#f8fafc" stroke="#94a3b8" stroke-width="2"/>
+  <text x="1045" y="112" text-anchor="middle" font-family="sans-serif" font-size="25" font-weight="700" fill="#7c2d12">空位机制</text>
+  <text x="1045" y="142" text-anchor="middle" font-family="sans-serif" font-size="17" fill="#475569">正常原子跳入相邻空位</text>
+  <g fill="#cbd5e1" stroke="#64748b" stroke-width="2">
+    <circle cx="930" cy="215" r="24"/><circle cx="990" cy="215" r="24"/><circle cx="1050" cy="215" r="24"/><circle cx="1110" cy="215" r="24"/>
+    <circle cx="930" cy="315" r="24"/><circle cx="990" cy="315" r="24"/><circle cx="1050" cy="315" r="24"/><circle cx="1110" cy="315" r="24"/>
+  </g>
+  <circle cx="990" cy="215" r="24" fill="#ffffff" stroke="#7c3aed" stroke-width="3" stroke-dasharray="6 5"/>
+  <circle cx="930" cy="215" r="24" fill="#f97316" stroke="#c2410c" stroke-width="2"/>
+  <path d="M955 215 L977 215" fill="none" stroke="#7c3aed" stroke-width="3" marker-end="url(#violet-arrow)"/>
+  <path d="M1015 250 C980 275 945 265 935 240" fill="none" stroke="#7c3aed" stroke-width="2.5" stroke-dasharray="6 4" marker-end="url(#violet-arrow)"/>
+  <text x="1045" y="420" text-anchor="middle" font-family="sans-serif" font-size="17" fill="#334155">原子与空位反向迁移，是置换型固溶体的主要机制</text>
+</svg>

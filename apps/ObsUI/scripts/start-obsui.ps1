@@ -1,17 +1,21 @@
 [CmdletBinding()]
 param(
-    [int]$Port = 5173
+    [int]$Port = 5173,
+    [string]$OpenPath = '/?ui=tab-v2',
+    [switch]$NoOpen
 )
 
 $ErrorActionPreference = 'Stop'
 
 $appRoot = Split-Path -Parent $PSScriptRoot
 $hostName = '127.0.0.1'
-$url = "http://${hostName}:$Port/"
+$baseUrl = "http://${hostName}:$Port/"
+$normalizedOpenPath = if ([string]::IsNullOrWhiteSpace($OpenPath)) { '/' } elseif ($OpenPath.StartsWith('/')) { $OpenPath } else { "/$OpenPath" }
+$openUrl = if ($normalizedOpenPath -eq '/') { $baseUrl } else { "$baseUrl$($normalizedOpenPath.TrimStart('/'))" }
 
 function Test-ObsUiReady {
     try {
-        $response = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 2
+        $response = Invoke-WebRequest -Uri $baseUrl -UseBasicParsing -TimeoutSec 2
         return ($response.StatusCode -eq 200 -and $response.Content -match 'ObsUI')
     }
     catch {
@@ -34,18 +38,22 @@ if (-not (Test-ObsUiReady)) {
         throw "ObsUI 应用目录不完整：$appRoot"
     }
 
-    $server = Start-Process -FilePath $pnpm -ArgumentList @('dev', '--', '--host', $hostName, '--port', $Port) -WorkingDirectory $appRoot -WindowStyle Hidden -PassThru
-    $deadline = [DateTime]::UtcNow.AddSeconds(30)
+    $server = Start-Process -FilePath $pnpm -ArgumentList @('exec', 'vite', '--host', $hostName, '--port', $Port) -WorkingDirectory $appRoot -WindowStyle Hidden -PassThru
+    $ready = $false
+    $deadline = [DateTime]::UtcNow.AddSeconds(60)
     do {
         Start-Sleep -Milliseconds 500
         if ($server.HasExited) {
             throw "ObsUI Vite 进程提前退出，退出码：$($server.ExitCode)"
         }
-    } while (-not (Test-ObsUiReady) -and [DateTime]::UtcNow -lt $deadline)
+        $ready = Test-ObsUiReady
+    } while (-not $ready -and [DateTime]::UtcNow -lt $deadline)
 
-    if (-not (Test-ObsUiReady)) {
-        throw "ObsUI 未能在 $url 启动"
+    if (-not $ready) {
+        throw "ObsUI 未能在 $baseUrl 启动"
     }
 }
 
-Start-Process $url
+if (-not $NoOpen) {
+    Start-Process $openUrl
+}

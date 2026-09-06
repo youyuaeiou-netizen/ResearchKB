@@ -1,0 +1,16 @@
+{
+  "schema": "researchkb-area-sync/v1",
+  "generated_at": "2026-08-23T20:03:45+08:00",
+  "status": "OK_EMPTY",
+  "source_upgrade_generated_at": "2026-08-23T20:03:43+08:00",
+  "window_days": 90,
+  "distinct_tasks_threshold": 5,
+  "areas_file_count": 52,
+  "managed_area_file_count": 0,
+  "protected_area_file_count": 52,
+  "decisions": [],
+  "formal_apply": true,
+  "areas_writes": 0,
+  "deletions": 0,
+  "proposal_run": ".harness/staging/knowledge-lifecycle/areas-proposals/areas-20260823-200345"
+}

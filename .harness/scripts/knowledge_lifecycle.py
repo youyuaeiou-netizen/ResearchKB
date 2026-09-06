@@ -388,7 +388,7 @@ def scan_workspace(root: Path, config: dict[str, Any]) -> dict[str, Any]:
             "curated_generation": "staging_proposal_only",
             "auto_curated_promotion": bool(config.get("policy", {}).get("auto_curated_promotion", False)),
             "auto_areas_promotion": bool(config.get("policy", {}).get("auto_areas_promotion", False)),
-            "usage_recording": False,
+            "usage_recording": bool(config.get("policy", {}).get("usage_recording_enabled", False)),
             "default_anomaly_action": "hold",
         },
     }
@@ -497,7 +497,7 @@ def proposal_markdown(proposal: dict[str, Any], *, formal: bool = False) -> str:
     sources = json.dumps(proposal["sources"], ensure_ascii=False)
     source_items = json.dumps(proposal["source_items"], ensure_ascii=False)
     record_kind = "curated" if formal else "curated-proposal"
-    promotion_status = "applied-with-human-review-pending" if formal else "staged"
+    promotion_status = "applied-auto-reusable" if formal else "staged"
     lines = [
         "---",
         f"record_kind: {quote(record_kind)}",
@@ -519,9 +519,9 @@ def proposal_markdown(proposal: dict[str, Any], *, formal: bool = False) -> str:
         f"# {proposal['title']}",
         "",
         (
-            "> 这是通过显式 --apply 写入的 Curated 卡片；当前仍待人工审阅，不能视为已确认的正式科学结论。"
+            "> 这是通过现有计划任务的显式 --apply 写入的 Curated 卡片；它可参与自动学习流转，但未经人工核验，不能视为 `verified` 科学结论。"
             if formal
-            else "> 这是 Curated 候选提案，不是已确认的正式知识。正式写入前必须完成来源核验、主题分类和人工审阅。"
+            else "> 这是 Curated 候选提案，不是已确认的正式知识；系统会在来源、去重和运行完整性门通过后自动决定是否流转。"
         ),
         "",
         "## 来源追踪",
@@ -554,7 +554,7 @@ def proposal_markdown(proposal: dict[str, Any], *, formal: bool = False) -> str:
             "",
             codex_text,
         ])
-    lines.extend(["", "## 人工审阅", "", "- 待确认：主题、证据范围、条件/单位、与现有 Curated 的关系及是否值得正式沉淀。", ""])
+    lines.extend(["", "## 系统状态", "", "- 日常流转由自动规则完成；仅在来源冲突、结构损坏、运行完整性失败或受保护区域变化时生成系统性告警。", ""])
     return "\n".join(lines)
 
 
@@ -660,7 +660,7 @@ def compile_candidates(
             codex_statuses.append({"curated_id": curated_id, **codex_status})
             if codex_status.get("status") == "OK" and codex_text.strip():
                 proposal["action"] = "propose"
-                proposal["reason"] = "已生成 Codex 编译草稿，仍需人工审阅后才能进入正式 Curated"
+                proposal["reason"] = "已生成 Codex 编译草稿，等待来源、去重与运行完整性门通过后自动流转"
             else:
                 proposal["reason"] = "Codex 编译未成功，保留待处理，不自动晋级"
         elif use_codex:
@@ -847,14 +847,14 @@ def apply_formal_proposals(root: Path, config: dict[str, Any], result: dict[str,
             continue
         formal_proposal = dict(proposal)
         formal_proposal["action"] = "applied"
-        formal_proposal["status"] = "curated-pending-review"
-        formal_proposal["reason"] = "显式 --apply 已写入 Curated，仍待人工审阅"
+        formal_proposal["status"] = "curated-auto-reusable"
+        formal_proposal["reason"] = "现有计划任务的 --apply 已写入 Curated，可进入自动学习流转但不等同于 verified"
         formal_proposal["formal_path"] = rel_path(target, root)
         atomic_write(target, proposal_markdown(formal_proposal, formal=True))
         proposal.update({
             "action": "applied",
-            "status": "curated-pending-review",
-            "reason": "显式 --apply 已写入 Curated，仍待人工审阅",
+            "status": "curated-auto-reusable",
+            "reason": "现有计划任务的 --apply 已写入 Curated，可进入自动学习流转但不等同于 verified",
             "formal_path": rel_path(target, root),
         })
         created.append(rel_path(target, root))
