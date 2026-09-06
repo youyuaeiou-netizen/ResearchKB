@@ -285,8 +285,7 @@
   font-size: 10px;
 }
 
-/* The legacy dashboard has a broad `nav button span` rule; keep V2's
-   two-column copy area on its own geometry. */
+/* Keep the two-column copy area on its own geometry in any embedding page. */
 .tab-modal-v2__nav-item .tab-modal-v2__nav-copy {
   width: auto;
   min-width: 0;

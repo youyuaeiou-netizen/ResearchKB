@@ -149,6 +149,9 @@ describe("H.D.D V2 页面", () => {
 
     expect(host.textContent).toContain("H.D.D 本机桥接");
     expect(host.textContent).toContain("Codex CLI 未找到");
+    expect(host.textContent).toContain("本地数据");
+    expect(host.querySelector('button')?.textContent).toContain("打开工作台设置");
+    expect([...host.querySelectorAll("button")].some((button) => button.textContent?.includes("导入 JSON 备份"))).toBe(true);
     act(() => host.querySelector<HTMLButtonElement>(".tab-modal-v2__hdd-status-card button")?.click());
     expect(openSettings).toHaveBeenCalledTimes(1);
   });

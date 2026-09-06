@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent, type KeyboardEvent } from "react";
 import { IoAddOutline, IoArrowUpOutline, IoChatbubbleEllipsesOutline, IoCheckmarkCircleOutline, IoChevronForwardOutline, IoCloseOutline, IoDocumentTextOutline, IoFolderOpenOutline, IoSearchOutline, IoSettingsOutline, IoStopCircleOutline, IoTrashOutline } from "react-icons/io5";
 import { PiWaveform } from "react-icons/pi";
-import { useHddChat, type ConversationSummary, type HddCitation } from "../HddChatPanel";
+import { useHddChat, type ConversationSummary, type HddCitation, type HddStatus } from "../HddChatPanel";
 import { HDD_MODELS, HDD_REASONING_EFFORTS, type HddModelId, type HddReasoningEffort } from "../hdd-models";
 import { ActionButton } from "./ActionButton";
 import { ContentCard } from "./ContentCard";
@@ -45,6 +45,13 @@ function HddConversationRow({ conversation, selected, onOpen, onDelete }: { conv
       <IoChatbubbleEllipsesOutline aria-hidden="true" /><span>{conversation.title}</span>
     </button>
     <ActionButton type="button" className="tab-modal-v2__hdd-session-delete" aria-label={`删除会话：${conversation.title}`} title={`删除会话：${conversation.title}`} onClick={(event) => { event.stopPropagation(); onDelete(); }}><IoTrashOutline aria-hidden="true" /></ActionButton>
+  </div>;
+}
+
+function HddSettingsPage({ context, status }: { context: V2BusinessContext; status: HddStatus | null }) {
+  return <div className="tab-modal-v2__page-stack tab-modal-v2__hdd-settings-page">
+    <ContentCard accent="gold" className="tab-modal-v2__hdd-status-card"><div className="tab-modal-v2__card-top"><span className="tab-modal-v2__card-icon"><IoSettingsOutline aria-hidden="true" /></span><span className={`tab-modal-v2__live-pill${status?.available ? " is-ready" : ""}`}><i />{status?.available ? "在线" : status ? "离线" : "检查中"}</span></div><h2>H.D.D 本机桥接</h2><p>当前对话使用本机 Codex 只读桥接。知识镜像仅提供本机 Markdown / TXT 内容，历史会话保存在本机。</p><div className="tab-modal-v2__definition-list"><div><span>版本</span><b>{status?.version ?? "—"}</b></div><div><span>状态</span><b>{status?.message ?? "正在检查本机 Codex CLI"}</b></div></div><ActionButton variant="quiet" onClick={context.actions.openSettings}>打开工作台设置</ActionButton></ContentCard>
+    <ContentCard accent="blue" className="tab-modal-v2__hdd-data-card"><span className="tab-modal-v2__card-code">LOCAL DATA</span><h2>本地数据</h2><p>项目、任务、资料和回收站保存在浏览器本地。导出 JSON 后可在另一台电脑的同一页面导入。</p><div className="tab-modal-v2__action-row"><ActionButton variant="primary" onClick={context.actions.exportData}>导出 JSON 备份</ActionButton><ActionButton onClick={context.actions.importData}>导入 JSON 备份</ActionButton><ActionButton variant="danger" onClick={context.actions.resetDemo}>恢复示例数据</ActionButton></div></ContentCard>
   </div>;
 }
 
@@ -105,7 +112,7 @@ export function HddPageV2({ nav, context }: { nav: string; context: V2BusinessCo
 
   if (nav === "sources") return <div className="tab-modal-v2__page-stack"><section className="tab-modal-v2__list-panel"><div className="tab-modal-v2__section-heading"><div><b>最近回答的来源</b></div><span>{chat.lastCitations.length} 个来源</span></div><HddSourceList citations={chat.lastCitations} selectedPath={null} /></section></div>;
 
-  if (nav === "settings") return <div className="tab-modal-v2__page-stack"><ContentCard accent="gold" className="tab-modal-v2__hdd-status-card"><div className="tab-modal-v2__card-top"><span className="tab-modal-v2__card-icon"><IoSettingsOutline aria-hidden="true" /></span><span className={`tab-modal-v2__live-pill${chat.status?.available ? " is-ready" : ""}`}><i />{chat.status?.available ? "在线" : chat.status ? "离线" : "检查中"}</span></div><h2>H.D.D 本机桥接</h2><p>当前对话使用本机 Codex 只读桥接。知识镜像仅提供本机 Markdown / TXT 内容，历史会话保存在本机。</p><div className="tab-modal-v2__definition-list"><div><span>版本</span><b>{chat.status?.version ?? "—"}</b></div><div><span>状态</span><b>{chat.status?.message ?? "正在检查本机 Codex CLI"}</b></div></div><ActionButton variant="quiet" onClick={context.actions.openSettings}>打开工作台设置</ActionButton></ContentCard></div>;
+  if (nav === "settings") return <HddSettingsPage context={context} status={chat.status} />;
 
   return <div className="tab-modal-v2__hdd-workbench">
     <aside className="tab-modal-v2__hdd-sessions" aria-label="H.D.D 会话列表">
@@ -118,7 +125,7 @@ export function HddPageV2({ nav, context }: { nav: string; context: V2BusinessCo
     {settingsMenuOpen && <div className="tab-modal-v2__hdd-settings-layer" onClick={() => setSettingsMenuOpen(false)} onKeyDownCapture={handleSettingsMenuKeyDown}>
       <section className="tab-modal-v2__hdd-settings-popover" role="dialog" aria-modal="true" aria-label="H.D.D 设置菜单" onClick={(event) => event.stopPropagation()}>
         <header className="tab-modal-v2__hdd-settings-popover-header"><div><span className="tab-modal-v2__hdd-settings-popover-icon"><IoSettingsOutline aria-hidden="true" /></span><div><h2>设置</h2><p>H.D.D 工作区</p></div></div><ActionButton autoFocus aria-label="关闭设置菜单" title="关闭设置菜单" onClick={() => setSettingsMenuOpen(false)}><IoCloseOutline aria-hidden="true" /></ActionButton></header>
-        <div className="tab-modal-v2__hdd-settings-popover-body"><b className="tab-modal-v2__hdd-settings-popover-section">工作区</b><button type="button" className="tab-modal-v2__hdd-settings-item" aria-label="打开项目库设置" onClick={openLibrarySettings}><span className="tab-modal-v2__hdd-settings-item-icon"><IoFolderOpenOutline aria-hidden="true" /></span><span><b>项目库</b><small>选择回答时使用的知识目录</small></span><IoChevronForwardOutline aria-hidden="true" /></button></div>
+        <div className="tab-modal-v2__hdd-settings-popover-body"><b className="tab-modal-v2__hdd-settings-popover-section">工作区</b><button type="button" className="tab-modal-v2__hdd-settings-item" aria-label="打开项目库设置" onClick={openLibrarySettings}><span className="tab-modal-v2__hdd-settings-item-icon"><IoFolderOpenOutline aria-hidden="true" /></span><span><b>项目库</b><small>选择回答时使用的知识目录</small></span><IoChevronForwardOutline aria-hidden="true" /></button><button type="button" className="tab-modal-v2__hdd-settings-item" aria-label="打开本地数据设置" onClick={() => { setSettingsMenuOpen(false); context.actions.openSettings(); }}><span className="tab-modal-v2__hdd-settings-item-icon"><IoDocumentTextOutline aria-hidden="true" /></span><span><b>本地数据</b><small>导入或导出 JSON 备份</small></span><IoChevronForwardOutline aria-hidden="true" /></button></div>
       </section>
     </div>}
 
