@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 describe("homepage mission task affordance", () => {
   it("keeps the checkbox above the clipped task text layer", async () => {
-    const styles = await readFile(join(process.cwd(), "src", "styles.css"), "utf8");
+    const styles = (await readFile(join(process.cwd(), "src", "styles.css"), "utf8")).replace(/\r\n/g, "\n");
 
     expect(styles).toContain(".mission-card .mission-copy > .mission-task {\n");
     expect(styles).toContain("  overflow: visible;\n");
