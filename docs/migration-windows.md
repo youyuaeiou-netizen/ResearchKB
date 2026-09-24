@@ -16,7 +16,7 @@ Set-Location apps\ObsUI
 pnpm install --frozen-lockfile
 pnpm test
 pnpm build
-& 'C:\Program Files\PowerShell\7\pwsh.exe' -NoLogo -NoProfile -File .\scripts\start-obsui.ps1
+pwsh -NoLogo -NoProfile -File .\scripts\start-obsui.ps1
 ```
 
 普通新克隆已包含 ObsUI 文件，不需要递归子模块命令。旧电脑的 ObsUI 独立 `.git` 仅在旧电脑保留；迁移提交以主仓库版本为准。`pnpm dev` 和 `start-obsui.ps1` 都会打开 `http://127.0.0.1:5173/?ui=tab-v2`；请使用这个完整地址进入当前界面。
@@ -50,7 +50,7 @@ Horizon 为可选集成：需要时安装 uv，执行 `uv sync --project .harnes
 
 ```powershell
 python -m unittest discover -s .harness\tests -v
-& 'C:\Program Files\PowerShell\7\pwsh.exe' -NoLogo -NoProfile -File .harness\tasks\run-researchkb-weekly.ps1 -NoWrite
+pwsh -NoLogo -NoProfile -File .harness\tasks\run-researchkb-weekly.ps1 -NoWrite
 git status --short
 ```
 

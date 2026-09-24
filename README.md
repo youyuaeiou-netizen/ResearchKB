@@ -51,7 +51,7 @@ codex
 基础任务需要 PowerShell 7 与 Python 3.11+。`Resolve-ResearchKBPython.ps1` 会优先发现 Codex 自带 Python；也可显式设置 `RESEARCHKB_PYTHON` 为 `python.exe` 路径。只有显式使用 `-Codex` 的候选编译才需要本机可用的 `codex` CLI。
 
 ```powershell
-& 'C:\Program Files\PowerShell\7\pwsh.exe' -NoLogo -NoProfile -File .harness\tasks\run-knowledge-lifecycle-weekly.ps1 -NoWrite
+pwsh -NoLogo -NoProfile -File .harness\tasks\run-knowledge-lifecycle-weekly.ps1 -NoWrite
 ```
 
 完整的首次离线运行见 [中文快速开始](docs/quickstart-zh.md)，架构和自动流转边界见 [架构说明](docs/architecture.md)。
@@ -70,7 +70,7 @@ codex
 ```powershell
 python -m pip install -r .harness\requirements-test.txt
 python -m unittest discover -s .harness\tests -v
-& 'C:\Program Files\PowerShell\7\pwsh.exe' -NoLogo -NoProfile -File .harness\tasks\run-researchkb-weekly.ps1 -NoWrite
+pwsh -NoLogo -NoProfile -File .harness\tasks\run-researchkb-weekly.ps1 -NoWrite
 ```
 
 使用分支和 Pull Request 提交更改；贡献方式、安全报告和支持渠道见 [CONTRIBUTING.md](CONTRIBUTING.md)、[SECURITY.md](SECURITY.md) 与 [SUPPORT.md](SUPPORT.md)。

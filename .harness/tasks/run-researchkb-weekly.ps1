@@ -11,7 +11,14 @@ if ($Apply -and $NoWrite) {
 
 $harnessRoot = Split-Path -Parent $PSScriptRoot
 $workspaceRoot = Split-Path -Parent $harnessRoot
-$pwsh = 'C:\Program Files\PowerShell\7\pwsh.exe'
+$pwshCandidates = @(
+    'C:\Program Files\PowerShell\7\pwsh.exe',
+    (Join-Path $env:LOCALAPPDATA 'Microsoft\WindowsApps\pwsh.exe')
+)
+$pwsh = $pwshCandidates | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
+if (-not $pwsh) {
+    throw 'PowerShell 7 was not found. Install PowerShell 7, then ensure pwsh.exe is available from the MSI or Microsoft Store location.'
+}
 
 function Invoke-ResearchKBStep {
     param(

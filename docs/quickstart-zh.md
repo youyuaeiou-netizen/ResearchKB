@@ -17,7 +17,7 @@ git clone https://github.com/youyuaeiou-netizen/ResearchKB.git
 Set-Location ResearchKB
 python -m pip install -r .harness\requirements-test.txt
 python -m unittest discover -s .harness\tests -v
-& 'C:\Program Files\PowerShell\7\pwsh.exe' -NoLogo -NoProfile -File .harness\tasks\run-researchkb-weekly.ps1 -NoWrite
+pwsh -NoLogo -NoProfile -File .harness\tasks\run-researchkb-weekly.ps1 -NoWrite
 ```
 
 成功时，周度入口只输出扫描/评估结果，不创建 Curated、Areas、报告或 usage 状态。
