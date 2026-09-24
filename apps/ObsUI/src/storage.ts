@@ -1,9 +1,12 @@
+import { normalizeRepository, normalizeRepositoryRelation, type RepositoryEntry, type RepositoryRelation } from "./repositories";
 import type { AppState, BackupEnvelope, Project, Resource, RecycledItem, Task } from "./types";
-import { localDateKey } from "./target-v1/task-model";
+import { DEFAULT_DUE_TIME, localDateKey, normalizeDueTime } from "./target-v1/task-model";
+import { DEFAULT_WORKBENCH_SETTINGS, normalizeWorkbenchSettings, type WorkbenchSettings } from "./workbench-settings";
 
 export const DB_NAME = "obsui-local-state";
 export const STORE_NAME = "app-state";
 export const STATE_KEY = "current";
+export const WORKBENCH_SETTINGS_KEY = "workbench-settings-v1";
 
 const now = () => new Date().toISOString();
 const currentMonthKey = () => localDateKey(new Date()).slice(0, 7);
@@ -56,6 +59,7 @@ export function createInitialState(): AppState {
         title: "整理本周最重要的三个问题",
         projectId,
         dueDate: localDateKey(new Date()),
+        dueTime: DEFAULT_DUE_TIME,
         status: "active",
         priority: 5,
         folderPath: "",
@@ -68,6 +72,7 @@ export function createInitialState(): AppState {
         title: "补充课程阅读笔记",
         projectId: courseId,
         dueDate: localDateKey(new Date(Date.now() + 86400000 * 2)),
+        dueTime: DEFAULT_DUE_TIME,
         status: "active",
         priority: 3,
         folderPath: "",
@@ -87,6 +92,8 @@ export function createInitialState(): AppState {
         createdAt,
       },
     ],
+    repositories: [],
+    repositoryRelations: [],
     recycleBin: [],
   };
 }
@@ -127,6 +134,28 @@ export async function saveAppState(state: AppState): Promise<void> {
     transaction.objectStore(STORE_NAME).put(state, STATE_KEY);
     transaction.oncomplete = () => resolve();
     transaction.onerror = () => reject(transaction.error ?? new Error("无法保存本地数据"));
+  });
+  database.close();
+}
+
+export async function loadWorkbenchSettings(): Promise<WorkbenchSettings> {
+  const database = await openDatabase();
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction(STORE_NAME, "readonly");
+    const request = transaction.objectStore(STORE_NAME).get(WORKBENCH_SETTINGS_KEY);
+    request.onsuccess = () => resolve(request.result === undefined ? structuredClone(DEFAULT_WORKBENCH_SETTINGS) : normalizeWorkbenchSettings(request.result));
+    request.onerror = () => reject(request.error ?? new Error("无法读取工作台设置"));
+    transaction.oncomplete = () => database.close();
+  });
+}
+
+export async function saveWorkbenchSettings(settings: WorkbenchSettings): Promise<void> {
+  const database = await openDatabase();
+  await new Promise<void>((resolve, reject) => {
+    const transaction = database.transaction(STORE_NAME, "readwrite");
+    transaction.objectStore(STORE_NAME).put(normalizeWorkbenchSettings(settings), WORKBENCH_SETTINGS_KEY);
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error ?? new Error("无法保存工作台设置"));
   });
   database.close();
 }
@@ -176,6 +205,7 @@ function normalizeTask(value: unknown): Task | null {
     title: value.title,
     projectId: value.projectId,
     dueDate: isString(value.dueDate) ? value.dueDate : "",
+    dueTime: normalizeDueTime(value.dueTime),
     status,
     priority,
     folderPath: isString(value.folderPath) ? value.folderPath : "",
@@ -208,6 +238,19 @@ export function normalizeAppState(value: unknown): AppState | null {
     !Array.isArray(value.projects) || !value.projects.every(validateProject) ||
     !Array.isArray(value.tasks) || !Array.isArray(value.resources) || !value.resources.every(validateResource) ||
     !Array.isArray(value.recycleBin)) return null;
+  const normalizedRepositories = value.repositories === undefined
+    ? []
+    : Array.isArray(value.repositories)
+      ? value.repositories.map(normalizeRepository)
+      : null;
+  if (normalizedRepositories === null || normalizedRepositories.some((repository) => repository === null)) return null;
+  const repositories = normalizedRepositories as RepositoryEntry[];
+  const normalizedRelations = value.repositoryRelations === undefined
+    ? []
+    : Array.isArray(value.repositoryRelations)
+      ? value.repositoryRelations.map(normalizeRepositoryRelation).filter((relation): relation is RepositoryRelation => Boolean(relation))
+      : null;
+  if (normalizedRelations === null) return null;
   const tasks = value.tasks.map(normalizeTask);
   const recycleBin = value.recycleBin.map(normalizeRecycle);
   if (tasks.some((task) => task === null) || recycleBin.some((item) => item === null)) return null;
@@ -220,6 +263,8 @@ export function normalizeAppState(value: unknown): AppState | null {
     projects: value.projects,
     tasks: tasks as Task[],
     resources: value.resources,
+    repositories,
+    repositoryRelations: normalizedRelations,
     recycleBin: recycleBin as RecycledItem[],
   };
 }

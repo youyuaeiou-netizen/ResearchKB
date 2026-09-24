@@ -2,7 +2,8 @@ import { useEffect, useState, type FormEvent, type KeyboardEvent } from "react";
 import { IoAddOutline, IoArrowUpOutline, IoChatbubbleEllipsesOutline, IoCheckmarkCircleOutline, IoChevronForwardOutline, IoCloseOutline, IoDocumentTextOutline, IoFolderOpenOutline, IoSearchOutline, IoSettingsOutline, IoStopCircleOutline, IoTrashOutline } from "react-icons/io5";
 import { PiWaveform } from "react-icons/pi";
 import { useHddChat, type ConversationSummary, type HddCitation } from "../HddChatPanel";
-import { HDD_MODELS, HDD_REASONING_EFFORTS, type HddModelId, type HddReasoningEffort } from "../hdd-models";
+import { HDD_PROVIDERS, hddReasoningEfforts, hddRuntimeModelLabel, normalizeHddReasoningEffort, type HddModelId, type HddProviderId, type HddReasoningEffort } from "../hdd-models";
+import { DEFAULT_WORKBENCH_SETTINGS } from "../workbench-settings";
 import { ActionButton } from "./ActionButton";
 import { ContentCard } from "./ContentCard";
 import type { V2BusinessContext } from "./model";
@@ -49,32 +50,69 @@ function HddConversationRow({ conversation, selected, onOpen, onDelete }: { conv
 }
 
 export function HddPageV2({ nav, context }: { nav: string; context: V2BusinessContext }) {
-  const chat = useHddChat();
+  const hddSettings = context.hddSettings ?? DEFAULT_WORKBENCH_SETTINGS.hdd;
+  const chat = useHddChat(context.hddSettings);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [contextRoots, setContextRoots] = useState<string[]>(() => HDD_CONTEXT_ROOTS.map((root) => root.id));
   const [sessionQuery, setSessionQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
   const [workspaceView, setWorkspaceView] = useState<"chat" | "settings">("chat");
-  const [model, setModel] = useState<HddModelId>("gpt-5.6-luna");
-  const [reasoningEffort, setReasoningEffort] = useState<HddReasoningEffort>("high");
+  const [model, setModel] = useState<HddModelId>(hddSettings.model);
+  const [reasoningEffort, setReasoningEffort] = useState<HddReasoningEffort>(hddSettings.reasoningEffort);
   const selectedCitation = chat.lastCitations.find((citation) => citation.path === selectedPath) ?? null;
   const normalizedSessionQuery = sessionQuery.trim().toLocaleLowerCase();
   const visibleConversations = normalizedSessionQuery ? chat.conversations.filter((conversation) => conversation.title.toLocaleLowerCase().includes(normalizedSessionQuery)) : chat.conversations;
   const hasDraft = chat.draft.trim().length > 0;
+  const selectedCliProfile = hddSettings.cliProfiles.find((profile) => profile.id === hddSettings.selectedCliProfileId) ?? hddSettings.cliProfiles[0] ?? null;
+  const providerLabel = HDD_PROVIDERS.find((provider) => provider.id === hddSettings.provider)?.label ?? "Codex CLI";
+  const codexModels = hddSettings.provider === "codex" ? chat.status?.modelOptions : undefined;
+  const modelOptions = hddSettings.provider === "codex"
+    ? codexModels?.length ? codexModels : [{ id: hddSettings.model, label: hddSettings.model }]
+    : chat.status?.models?.length
+      ? chat.status.models.map((item) => ({ id: item, label: hddRuntimeModelLabel(item) }))
+      : hddSettings.model ? [{ id: hddSettings.model, label: hddSettings.model }] : [];
+  const reasoningOptions = hddReasoningEfforts(hddSettings.provider, model, codexModels);
+  const canSend = Boolean(chat.status?.available) && (hddSettings.provider !== "codex" || Boolean(codexModels?.some((item) => item.id === model)));
 
   useEffect(() => {
     setSelectedPath((current) => chat.lastCitations.some((citation) => citation.path === current) ? current : chat.lastCitations[0]?.path ?? null);
   }, [chat.lastCitations]);
 
+  useEffect(() => {
+    setModel(hddSettings.model);
+    setReasoningEffort(normalizeHddReasoningEffort(hddSettings.provider, hddSettings.model, hddSettings.reasoningEffort));
+  }, [hddSettings.model, hddSettings.provider, hddSettings.reasoningEffort]);
+
+  useEffect(() => {
+    if (hddSettings.provider !== "codex" || !codexModels?.length || codexModels.some((item) => item.id === model)) return;
+    const nextModel = codexModels.find((item) => item.isDefault)?.id ?? codexModels[0].id;
+    setModel(nextModel);
+    setReasoningEffort(normalizeHddReasoningEffort("codex", nextModel, reasoningEffort, codexModels));
+  }, [codexModels, hddSettings.provider, model, reasoningEffort]);
+
+  const selectModel = (nextModel: HddModelId) => {
+    setModel(nextModel);
+    setReasoningEffort((current) => normalizeHddReasoningEffort(hddSettings.provider, nextModel, current, codexModels));
+  };
+
+  const generationOptions = {
+    contextRoots,
+    provider: hddSettings.provider,
+    model,
+    ...(reasoningOptions.length ? { reasoningEffort } : {}),
+    customInstructions: hddSettings.customInstructions,
+    ...(selectedCliProfile ? { cliPath: selectedCliProfile.executablePath, cliArgs: selectedCliProfile.argsTemplate, cliPreset: selectedCliProfile.preset } : {}),
+  };
+
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
-      void chat.sendMessage(undefined, { contextRoots, model, reasoningEffort });
+      void chat.sendMessage(undefined, generationOptions);
     }
   };
 
-  const submitMessage = (event?: FormEvent) => void chat.sendMessage(event, { contextRoots, model, reasoningEffort });
+  const submitMessage = (event?: FormEvent) => void chat.sendMessage(event, generationOptions);
   const toggleContextRoot = (id: string) => setContextRoots((current) => current.includes(id) ? current.filter((root) => root !== id) : [...current, id]);
   const selectAllContextRoots = () => setContextRoots(HDD_CONTEXT_ROOTS.map((root) => root.id));
   const startConversation = () => {
@@ -105,7 +143,7 @@ export function HddPageV2({ nav, context }: { nav: string; context: V2BusinessCo
 
   if (nav === "sources") return <div className="tab-modal-v2__page-stack"><section className="tab-modal-v2__list-panel"><div className="tab-modal-v2__section-heading"><div><b>最近回答的来源</b></div><span>{chat.lastCitations.length} 个来源</span></div><HddSourceList citations={chat.lastCitations} selectedPath={null} /></section></div>;
 
-  if (nav === "settings") return <div className="tab-modal-v2__page-stack"><ContentCard accent="gold" className="tab-modal-v2__hdd-status-card"><div className="tab-modal-v2__card-top"><span className="tab-modal-v2__card-icon"><IoSettingsOutline aria-hidden="true" /></span><span className={`tab-modal-v2__live-pill${chat.status?.available ? " is-ready" : ""}`}><i />{chat.status?.available ? "在线" : chat.status ? "离线" : "检查中"}</span></div><h2>H.D.D 本机桥接</h2><p>当前对话使用本机 Codex 只读桥接。知识镜像仅提供本机 Markdown / TXT 内容，历史会话保存在本机。</p><div className="tab-modal-v2__definition-list"><div><span>版本</span><b>{chat.status?.version ?? "—"}</b></div><div><span>状态</span><b>{chat.status?.message ?? "正在检查本机 Codex CLI"}</b></div></div><ActionButton variant="quiet" onClick={context.actions.openSettings}>打开工作台设置</ActionButton></ContentCard></div>;
+  if (nav === "settings") return <div className="tab-modal-v2__page-stack"><ContentCard accent="gold" className="tab-modal-v2__hdd-status-card"><div className="tab-modal-v2__card-top"><span className="tab-modal-v2__card-icon"><IoSettingsOutline aria-hidden="true" /></span><span className={`tab-modal-v2__live-pill${chat.status?.available ? " is-ready" : ""}`}><i />{chat.status?.available ? "在线" : chat.status ? "离线" : "检查中"}</span></div><h2>H.D.D 本机桥接</h2><p>当前对话使用{providerLabel}。知识镜像仅提供本机 Markdown / TXT 内容，历史会话保存在本机。</p><div className="tab-modal-v2__definition-list"><div><span>版本</span><b>{chat.status?.version ?? "—"}</b></div><div><span>状态</span><b>{chat.status?.message ?? "正在检查回答引擎"}</b></div></div><ActionButton variant="quiet" onClick={context.actions.openSettings}>打开工作台设置</ActionButton></ContentCard></div>;
 
   return <div className="tab-modal-v2__hdd-workbench">
     <aside className="tab-modal-v2__hdd-sessions" aria-label="H.D.D 会话列表">
@@ -118,7 +156,19 @@ export function HddPageV2({ nav, context }: { nav: string; context: V2BusinessCo
     {settingsMenuOpen && <div className="tab-modal-v2__hdd-settings-layer" onClick={() => setSettingsMenuOpen(false)} onKeyDownCapture={handleSettingsMenuKeyDown}>
       <section className="tab-modal-v2__hdd-settings-popover" role="dialog" aria-modal="true" aria-label="H.D.D 设置菜单" onClick={(event) => event.stopPropagation()}>
         <header className="tab-modal-v2__hdd-settings-popover-header"><div><span className="tab-modal-v2__hdd-settings-popover-icon"><IoSettingsOutline aria-hidden="true" /></span><div><h2>设置</h2><p>H.D.D 工作区</p></div></div><ActionButton autoFocus aria-label="关闭设置菜单" title="关闭设置菜单" onClick={() => setSettingsMenuOpen(false)}><IoCloseOutline aria-hidden="true" /></ActionButton></header>
-        <div className="tab-modal-v2__hdd-settings-popover-body"><b className="tab-modal-v2__hdd-settings-popover-section">工作区</b><button type="button" className="tab-modal-v2__hdd-settings-item" aria-label="打开项目库设置" onClick={openLibrarySettings}><span className="tab-modal-v2__hdd-settings-item-icon"><IoFolderOpenOutline aria-hidden="true" /></span><span><b>项目库</b><small>选择回答时使用的知识目录</small></span><IoChevronForwardOutline aria-hidden="true" /></button></div>
+        <div className="tab-modal-v2__hdd-settings-popover-body">
+          <b className="tab-modal-v2__hdd-settings-popover-section">回答模型</b>
+          <section className="tab-modal-v2__hdd-settings-model" aria-label="模型设置">
+            <div className="tab-modal-v2__hdd-settings-model-heading"><div><b>{providerLabel}</b><small>本次回答使用</small></div><span>MODEL</span></div>
+            <label className="tab-modal-v2__hdd-settings-model-field"><span>模型</span><select value={model} onChange={(event) => selectModel(event.target.value as HddModelId)} disabled={chat.loading || hddSettings.provider === "cli" || (hddSettings.provider === "codex" && !codexModels?.length)} aria-label="模型">{!modelOptions.some((item) => item.id === model) && <option value={model}>{model}（当前不可用）</option>}{modelOptions.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
+            <label className="tab-modal-v2__hdd-settings-model-field"><span>强度</span><select value={reasoningEffort} onChange={(event) => setReasoningEffort(event.target.value as HddReasoningEffort)} disabled={chat.loading || !reasoningOptions.length} aria-label="模型强度">{reasoningOptions.map((effort) => <option key={effort} value={effort}>{effort}</option>)}</select></label>
+            {hddSettings.provider === "codex" && chat.status && !codexModels?.length && <p className="tab-modal-v2__hdd-settings-model-note">Codex 模型列表暂不可用，请稍后重试。</p>}
+            {hddSettings.provider === "ollama" && <p className="tab-modal-v2__hdd-settings-model-note">这里只显示本机 Ollama 模型。GPT 模型位于 Codex CLI 提供方。</p>}
+            <button type="button" className="tab-modal-v2__hdd-settings-provider-link" onClick={context.actions.openSettings}>切换回答提供方 <IoChevronForwardOutline aria-hidden="true" /></button>
+          </section>
+          <b className="tab-modal-v2__hdd-settings-popover-section">工作区</b>
+          <button type="button" className="tab-modal-v2__hdd-settings-item" aria-label="打开项目库设置" onClick={openLibrarySettings}><span className="tab-modal-v2__hdd-settings-item-icon"><IoFolderOpenOutline aria-hidden="true" /></span><span><b>项目库</b><small>选择回答时使用的知识目录</small></span><IoChevronForwardOutline aria-hidden="true" /></button>
+        </div>
       </section>
     </div>}
 
@@ -139,10 +189,9 @@ export function HddPageV2({ nav, context }: { nav: string; context: V2BusinessCo
       {chat.error && <div className="tab-modal-v2__hdd-error" role="status">{chat.error}</div>}
       <form className="tab-modal-v2__hdd-composer" onSubmit={submitMessage}>
         <div className="tab-modal-v2__hdd-composer-input">
-          <textarea value={chat.draft} onChange={(event) => chat.setDraft(event.target.value)} onKeyDown={handleKeyDown} placeholder={chat.status?.available ? "向 H.D.D 提问…" : "Codex CLI 离线时不会伪造回答"} disabled={chat.loading || !chat.status?.available} rows={2} aria-label="向 H.D.D 提问" />
-          {chat.loading ? <ActionButton className="tab-modal-v2__hdd-send is-generating" type="button" variant="danger" onClick={chat.stopGeneration} aria-label="停止生成"><IoStopCircleOutline aria-hidden="true" /></ActionButton> : <ActionButton className={`tab-modal-v2__hdd-send ${hasDraft ? "is-filled" : "is-empty"}`} type="submit" variant="primary" disabled={!hasDraft || !chat.status?.available} aria-label="发送消息">{hasDraft ? <IoArrowUpOutline aria-hidden="true" /> : <PiWaveform aria-hidden="true" />}</ActionButton>}
+          <textarea value={chat.draft} onChange={(event) => chat.setDraft(event.target.value)} onKeyDown={handleKeyDown} placeholder={canSend ? "向 H.D.D 提问…" : "回答引擎或模型列表暂不可用"} disabled={chat.loading || !canSend} rows={2} aria-label="向 H.D.D 提问" />
+          {chat.loading ? <ActionButton className="tab-modal-v2__hdd-send is-generating" type="button" variant="danger" onClick={chat.stopGeneration} aria-label="停止生成"><IoStopCircleOutline aria-hidden="true" /></ActionButton> : <ActionButton className={`tab-modal-v2__hdd-send ${hasDraft ? "is-filled" : "is-empty"}`} type="submit" variant="primary" disabled={!hasDraft || !canSend} aria-label="发送消息">{hasDraft ? <IoArrowUpOutline aria-hidden="true" /> : <PiWaveform aria-hidden="true" />}</ActionButton>}
         </div>
-        <div className="tab-modal-v2__hdd-composer-toolbar"><label className="tab-modal-v2__hdd-model-control"><span>Codex</span><select value={model} onChange={(event) => setModel(event.target.value as HddModelId)} disabled={chat.loading} aria-label="模型">{HDD_MODELS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select><span>模型强度</span><select value={reasoningEffort} onChange={(event) => setReasoningEffort(event.target.value as HddReasoningEffort)} disabled={chat.loading} aria-label="模型强度">{HDD_REASONING_EFFORTS.map((effort) => <option key={effort} value={effort}>{effort}</option>)}</select></label></div>
       </form>
     </section>}
 

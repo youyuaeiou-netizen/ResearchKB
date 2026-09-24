@@ -4,6 +4,7 @@ export type TargetTaskDraft = {
   id?: string;
   title: string;
   dueDate: string;
+  dueTime?: string;
   priority: Priority;
   folderPath: string;
 };
@@ -18,6 +19,8 @@ export type TargetCalendarCell = {
 
 const pad = (value: number) => String(value).padStart(2, "0");
 
+export const DEFAULT_DUE_TIME = "23:59";
+
 export function localDateKey(date: Date): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
@@ -31,6 +34,16 @@ export function isValidDateKey(value: string): boolean {
   const [year, month, day] = value.split("-").map(Number);
   const parsed = new Date(year, month - 1, day);
   return parsed.getFullYear() === year && parsed.getMonth() === month - 1 && parsed.getDate() === day;
+}
+
+export function isValidTimeKey(value: string): boolean {
+  if (!/^\d{2}:\d{2}$/.test(value)) return false;
+  const [hour, minute] = value.split(":").map(Number);
+  return hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59;
+}
+
+export function normalizeDueTime(value: unknown): string {
+  return typeof value === "string" && isValidTimeKey(value) ? value : DEFAULT_DUE_TIME;
 }
 
 export function isCompletedTask(task: Pick<Task, "status">): boolean {
@@ -83,10 +96,25 @@ export function buildTargetCalendar(year: number, monthIndex: number): TargetCal
   });
 }
 
-export function deadlineForDate(dueDate: string): Date | null {
+export function buildTargetCalendarMondayFirst(year: number, monthIndex: number): TargetCalendarCell[] {
+  const first = new Date(year, monthIndex, 1);
+  const mondayOffset = (first.getDay() + 6) % 7;
+  const start = new Date(year, monthIndex, 1 - mondayOffset);
+  return Array.from({ length: 42 }, (_, index) => {
+    const date = new Date(start.getFullYear(), start.getMonth(), start.getDate() + index);
+    return {
+      date: localDateKey(date),
+      day: date.getDate(),
+      inMonth: date.getFullYear() === year && date.getMonth() === monthIndex,
+    };
+  });
+}
+
+export function deadlineForDate(dueDate: string, dueTime?: string): Date | null {
   if (!isValidDateKey(dueDate)) return null;
   const [year, month, day] = dueDate.split("-").map(Number);
-  return new Date(year, month - 1, day, 23, 59, 59, 999);
+  const [hour, minute] = normalizeDueTime(dueTime).split(":").map(Number);
+  return new Date(year, month - 1, day, hour, minute, 59, 999);
 }
 
 function compactDuration(milliseconds: number): string {
@@ -99,9 +127,9 @@ function compactDuration(milliseconds: number): string {
   return `${minutes}分`;
 }
 
-export function remainingTimeLabel(task: Pick<Task, "dueDate" | "status">, now = new Date()): string {
+export function remainingTimeLabel(task: Pick<Task, "dueDate" | "dueTime" | "status">, now = new Date()): string {
   if (task.status === "completed") return "已完成";
-  const deadline = deadlineForDate(task.dueDate);
+  const deadline = deadlineForDate(task.dueDate, task.dueTime);
   if (!deadline) return "截止日期无效";
   const difference = deadline.getTime() - now.getTime();
   if (difference < 0) return `已逾期 ${compactDuration(Math.abs(difference))}`;
@@ -109,9 +137,9 @@ export function remainingTimeLabel(task: Pick<Task, "dueDate" | "status">, now =
   return `${prefix}${compactDuration(difference)}`;
 }
 
-export function deadlineProgress(task: Pick<Task, "createdAt" | "dueDate" | "status">, now = new Date()): number {
+export function deadlineProgress(task: Pick<Task, "createdAt" | "dueDate" | "dueTime" | "status">, now = new Date()): number {
   if (task.status === "completed") return 100;
-  const deadline = deadlineForDate(task.dueDate);
+  const deadline = deadlineForDate(task.dueDate, task.dueTime);
   const createdAt = new Date(task.createdAt);
   if (!deadline || Number.isNaN(createdAt.getTime())) return 0;
   const duration = deadline.getTime() - createdAt.getTime();
@@ -123,4 +151,8 @@ export function formatDueDate(dueDate: string): string {
   const deadline = deadlineForDate(dueDate);
   if (!deadline) return "日期未设置";
   return deadline.toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric", weekday: "short" });
+}
+
+export function formatDueTime(dueTime?: string): string {
+  return normalizeDueTime(dueTime);
 }

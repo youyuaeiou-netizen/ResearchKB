@@ -1,0 +1,94 @@
+/*
+ * ObsUI semantic design tokens.
+ *
+ * The values are intentionally conservative: the homepage right rail is the
+ * visual baseline, while functional workspaces consume the same vocabulary
+ * without changing their existing geometry or interaction model.
+ */
+:root {
+  color-scheme: dark;
+
+  /* Semantic color roles. */
+  --obsui-color-action-primary: #ffd400;
+  --obsui-color-action-primary-soft: rgba(255, 212, 0, .18);
+  --obsui-color-state-info: #4ba1ee;
+  --obsui-color-state-success: #b8d900;
+  --obsui-color-state-warning: #ff7a24;
+  --obsui-color-state-danger: #f04d2f;
+  --obsui-color-category-violet: #d96a9c;
+  --obsui-color-content-primary: #f5f0e6;
+  --obsui-color-content-secondary: #b7b1a6;
+  --obsui-color-content-muted: #817b71;
+  --obsui-color-content-on-light: #151515;
+  --obsui-color-border-subtle: rgba(238, 234, 221, .17);
+  --obsui-color-border-strong: rgba(244, 240, 227, .34);
+  --obsui-color-border-frame: rgba(228, 234, 231, .34);
+  --obsui-color-border-focus: rgba(255, 212, 0, .82);
+
+  /* Material surfaces. Use texture tokens as the first background layer. */
+  --obsui-surface-shell: linear-gradient(145deg, rgba(45, 44, 41, .98), rgba(19, 19, 18, .98));
+  --obsui-surface-frame: linear-gradient(180deg, rgba(58, 57, 54, .98), rgba(30, 30, 29, .98));
+  --obsui-surface-panel: linear-gradient(145deg, rgba(18, 18, 17, .97), rgba(35, 34, 32, .94));
+  --obsui-surface-card: linear-gradient(145deg, rgba(57, 56, 53, .90), rgba(27, 27, 26, .94));
+  --obsui-surface-inset: rgba(10, 10, 9, .50);
+  --obsui-surface-control: rgba(10, 10, 9, .70);
+  --obsui-surface-light: rgba(247, 245, 236, .92);
+  --obsui-surface-light-strong: rgba(247, 244, 234, .94);
+  --obsui-texture-metal: repeating-linear-gradient(135deg, rgba(255, 255, 255, .025) 0 1px, transparent 1px 8px);
+  --obsui-texture-carbon: repeating-linear-gradient(135deg, rgba(255, 255, 255, .018) 0 1px, transparent 1px 9px);
+  --obsui-texture-button: linear-gradient(180deg, rgba(255, 255, 255, .06), rgba(0, 0, 0, .20));
+  --obsui-edge-bevel: inset 0 1px rgba(255, 255, 255, .07);
+  --obsui-edge-inset: inset 0 0 0 3px rgba(5, 7, 7, .22);
+  --obsui-shadow-shell: 0 30px 80px rgba(0, 0, 0, .58), inset 0 1px rgba(255, 255, 255, .08);
+  --obsui-shadow-card: 0 12px 28px rgba(0, 0, 0, .16);
+  --obsui-shadow-focus: 0 0 12px rgba(255, 196, 0, .55);
+
+  /* Typography roles. */
+  --obsui-font-ui: "Segoe UI Variable", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+  --obsui-font-display: "Microsoft YaHei UI", "Segoe UI Variable", "Segoe UI", sans-serif;
+  --obsui-font-mono: Consolas, "SFMono-Regular", monospace;
+  --obsui-font-weight-regular: 500;
+  --obsui-font-weight-medium: 650;
+  --obsui-font-weight-bold: 750;
+  --obsui-font-weight-black: 900;
+  --obsui-text-size-micro: 9px;
+  --obsui-text-size-caption: 11px;
+  --obsui-text-size-body: 13px;
+  --obsui-text-size-title: 18px;
+
+  /* Shapes, spacing and motion are reference-equivalent primitives. */
+  --obsui-radius-sm: 6px;
+  --obsui-radius-md: 9px;
+  --obsui-radius-lg: 12px;
+  --obsui-radius-workspace: 24px;
+  --obsui-cut-sm: 3px;
+  --obsui-space-1: 4px;
+  --obsui-space-2: 8px;
+  --obsui-space-3: 12px;
+  --obsui-space-4: 16px;
+  --obsui-motion-fast: 150ms;
+  --obsui-motion-standard: 180ms;
+  --obsui-motion-slow: 240ms;
+
+  /* Frozen homepage-right-rail values. These prevent later token tuning from
+     accidentally changing the weather/task sample the user approved. */
+  --obsui-home-border: rgba(255, 255, 255, .44);
+  --obsui-home-border-soft: rgba(255, 255, 255, .20);
+  --obsui-home-surface-dark: rgba(16, 18, 20, .80);
+  --obsui-home-surface-task: rgba(37, 41, 43, .86);
+  --obsui-home-surface-weather: rgba(247, 245, 236, .92);
+  --obsui-home-surface-light: rgba(247, 244, 234, .94);
+  --obsui-home-surface-label: #101010;
+  --obsui-home-surface-status: rgba(0, 0, 0, .08);
+  --obsui-home-meter-track: #e6e3dc;
+  --obsui-home-content: #f6f6ef;
+  --obsui-home-content-muted: #d6d3c3;
+  --obsui-home-action: #ffc400;
+  --obsui-home-action-focus: #ffca24;
+  --obsui-home-weather-accent: #ff6400;
+  --obsui-home-warning: #ff7500;
+  --obsui-home-warning-strong: #ff6c00;
+  --obsui-home-warning-hover: #b94818;
+  --obsui-home-shadow: 0 4px 15px rgba(0, 0, 0, .31);
+  --obsui-home-focus-shadow: 0 0 .9cqw rgba(255, 196, 0, .55);
+}

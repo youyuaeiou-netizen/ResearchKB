@@ -1,20 +1,20 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode, type WheelEvent as ReactWheelEvent } from "react";
-import { IoArrowBackOutline, IoArrowForwardOutline } from "react-icons/io5";
+import { IoArrowBackOutline, IoArrowForwardOutline, IoChevronBackSharp, IoChevronForwardSharp } from "react-icons/io5";
 
 type PointerState = { id: number; startX: number; startScrollLeft: number; moved: boolean };
 
-export function CardRail({ title, children, className = "" }: { title: string; children: ReactNode; className?: string }) {
+export function CardRail({ title, children, className = "", showChrome = true, showEdgeControls = false }: { title: string; children: ReactNode; className?: string; showChrome?: boolean; showEdgeControls?: boolean }) {
   const railRef = useRef<HTMLDivElement>(null);
   const pointerRef = useRef<PointerState | null>(null);
   const suppressClickRef = useRef(false);
   const [dragging, setDragging] = useState(false);
-  const [position, setPosition] = useState({ atStart: true, atEnd: false });
+  const [position, setPosition] = useState({ atStart: true, atEnd: false, hasOverflow: false });
 
   const syncPosition = () => {
     const node = railRef.current;
     if (!node) return;
     const max = Math.max(0, node.scrollWidth - node.clientWidth);
-    setPosition({ atStart: node.scrollLeft <= 1, atEnd: node.scrollLeft >= max - 1 });
+    setPosition({ atStart: node.scrollLeft <= 1, atEnd: node.scrollLeft >= max - 1, hasOverflow: max > 1 });
   };
 
   useEffect(() => {
@@ -47,12 +47,14 @@ export function CardRail({ title, children, className = "" }: { title: string; c
     syncPosition();
   };
 
-  return <section className={`tab-modal-v2__rail-group ${className}`.trim()} aria-label={title}>
-    <div className="tab-modal-v2__rail-heading"><span>{title}</span></div>
-    <div className="tab-modal-v2__rail-controls">
-      <button type="button" aria-label={`${title}向左滚动`} disabled={position.atStart} onClick={() => moveRail(-1)}><IoArrowBackOutline aria-hidden="true" /></button>
-      <button type="button" aria-label={`${title}向右滚动`} disabled={position.atEnd} onClick={() => moveRail(1)}><IoArrowForwardOutline aria-hidden="true" /></button>
-    </div>
+  return <section className={`tab-modal-v2__rail-group${showChrome ? "" : " tab-modal-v2__rail-group--plain"} ${className}`.trim()} aria-label={title}>
+    {showChrome && <>
+      <div className="tab-modal-v2__rail-heading"><span>{title}</span></div>
+      <div className="tab-modal-v2__rail-controls">
+        <button type="button" aria-label={`${title}向左滚动`} disabled={position.atStart} onClick={() => moveRail(-1)}><IoArrowBackOutline aria-hidden="true" /></button>
+        <button type="button" aria-label={`${title}向右滚动`} disabled={position.atEnd} onClick={() => moveRail(1)}><IoArrowForwardOutline aria-hidden="true" /></button>
+      </div>
+    </>}
     <div
       ref={railRef}
       className={`tab-modal-v2__card-rail${dragging ? " is-dragging" : ""}`}
@@ -92,5 +94,7 @@ export function CardRail({ title, children, className = "" }: { title: string; c
         event.preventDefault();
       }}
     >{children}</div>
+    {showEdgeControls && position.hasOverflow && !position.atStart && <button type="button" className="tab-modal-v2__rail-edge-control tab-modal-v2__rail-edge-control--previous" aria-label={`${title}向左滚动`} onClick={() => moveRail(-1)}><IoChevronBackSharp aria-hidden="true" /></button>}
+    {showEdgeControls && position.hasOverflow && !position.atEnd && <button type="button" className="tab-modal-v2__rail-edge-control tab-modal-v2__rail-edge-control--next" aria-label={`${title}向右滚动`} onClick={() => moveRail(1)}><IoChevronForwardSharp aria-hidden="true" /></button>}
   </section>;
 }

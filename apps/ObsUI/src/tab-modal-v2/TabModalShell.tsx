@@ -3,6 +3,7 @@ import { IoCloseOutline } from "react-icons/io5";
 import iconUrl from "../../assets/obsui.ico";
 import { getV2Tab, type V2TabKey } from "./model";
 import { TopTabs } from "./TopTabs";
+import { LiteratureTaskCenter } from "../LiteratureTaskCenter";
 
 export function TabModalShell({
   activeTab,
@@ -27,6 +28,7 @@ export function TabModalShell({
         <div className="tab-modal-v2__topbar obsui-v1__topbar">
           <div className="tab-modal-v2__brand obsui-v1__brand" aria-label="ObsUI"><img className="tab-modal-v2__brand-mark" src={iconUrl} alt="" /><b>ObsUI</b></div>
           <TopTabs activeTab={activeTab} onChange={onTabChange} />
+          <LiteratureTaskCenter />
           <button ref={closeRef} type="button" className="tab-modal-v2__close obsui-v1__close" onClick={onClose} aria-label="关闭功能面板" title="关闭功能面板"><IoCloseOutline aria-hidden="true" /></button>
         </div>
         <div className="tab-modal-v2__body obsui-v1__body">{children}</div>

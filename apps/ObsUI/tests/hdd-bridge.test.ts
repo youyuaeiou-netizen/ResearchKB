@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildCodexExecArgs, conversationPath, extractCodexJsonLines, HDD_KNOWLEDGE_ROOTS, HDD_MODELS, isAllowedKnowledgePath, isSafeConversationId, parseHddContextRoots, parseHddModel, parseHddReasoningEffort } from "../src/hdd-bridge";
+import { buildCodexExecArgs, conversationPath, expandHddCliArguments, extractCodexJsonLines, HDD_KNOWLEDGE_ROOTS, isAllowedKnowledgePath, isSafeConversationId, parseHddCliArgs, parseHddCliPath, parseHddContextRoots, parseHddCustomInstructions, parseHddModel, parseHddProvider, parseHddReasoningEffort, tokenizeHddCliArguments } from "../src/hdd-bridge";
+import { hddReasoningEfforts, normalizeHddReasoningEffort } from "../src/hdd-models";
 
 describe("H.D.D local bridge guards", () => {
   it("accepts only UUID v4 conversation ids and keeps the filename inside the chat root", () => {
@@ -40,7 +41,7 @@ describe("H.D.D local bridge guards", () => {
   });
 
   it("validates the Codex model and reasoning effort before building scoped CLI args", () => {
-    expect(HDD_MODELS.map((model) => model.label)).toEqual(["5.5", "5.6 Luna", "5.6 Terra", "5.6 Sol"]);
+    expect(parseHddModel({ model: "gpt-6-sol" })).toBe("gpt-6-sol");
     expect(parseHddModel({ model: "gpt-5.6-terra" })).toBe("gpt-5.6-terra");
     expect(parseHddModel({ content: "问题" })).toBeUndefined();
     expect(() => parseHddModel({ model: "--sandbox danger-full-access" })).toThrow("Codex 模型选择无效");
@@ -53,5 +54,46 @@ describe("H.D.D local bridge guards", () => {
     expect(args).toContain("gpt-5.6-luna");
     expect(args).toContain('model_reasoning_effort="high"');
     expect(buildCodexExecArgs("C:/Temp/obsui-hdd", "回答问题")).not.toContain("--model");
+  });
+
+  it("exposes only the reasoning strengths supported by the selected model", () => {
+    expect(hddReasoningEfforts("codex", "gpt-5.5")).toEqual(["low", "medium", "high", "xhigh"]);
+    expect(hddReasoningEfforts("codex", "gpt-5.6-luna")).toEqual(["low", "medium", "high", "xhigh", "max"]);
+    expect(hddReasoningEfforts("codex", "gpt-5.6-sol")).toEqual(["low", "medium", "high", "xhigh", "max", "ultra"]);
+    expect(hddReasoningEfforts("ollama", "qwen3.5:9b-64k")).toEqual(["off", "low", "medium", "high"]);
+    expect(hddReasoningEfforts("ollama", "gpt-oss:20b")).toEqual(["low", "medium", "high"]);
+    expect(hddReasoningEfforts("cli", "ollama/qwen3.5:9b-64k")).toEqual(["off", "low", "medium", "high"]);
+    expect(normalizeHddReasoningEffort("ollama", "qwen3.5:9b-64k", "xhigh")).toBe("medium");
+  });
+
+  it("accepts provider-specific local and external model names", () => {
+    expect(parseHddProvider({ provider: "ollama" })).toBe("ollama");
+    expect(parseHddProvider({ content: "问题" })).toBeUndefined();
+    expect(() => parseHddProvider({ provider: "remote-shell" })).toThrow("提供方选择无效");
+    expect(parseHddModel({ model: "qwen3.5:9b-128k" }, "ollama")).toBe("qwen3.5:9b-128k");
+    expect(parseHddModel({ model: "ollama/qwen3.5:9b-64k" }, "cli")).toBe("ollama/qwen3.5:9b-64k");
+    expect(parseHddModel({ model: "" }, "cli")).toBe("");
+    expect(() => parseHddModel({ model: "qwen3.5:9b; whoami" }, "ollama")).toThrow("模型名称无效");
+  });
+
+  it("keeps external CLI paths and arguments out of a command shell", () => {
+    expect(parseHddCliPath({ cliPath: "C:/Tools/opencode.ps1" })).toBe("C:/Tools/opencode.ps1");
+    expect(() => parseHddCliPath({ cliPath: "opencode.ps1" })).toThrow("绝对路径");
+    expect(() => parseHddCliPath({ cliPath: "C:/Tools/opencode.txt" })).toThrow("绝对路径");
+    expect(parseHddCliArgs({ cliArgs: "run --format default" })).toBe("run --format default");
+    expect(tokenizeHddCliArguments('run --format "plain text"')).toEqual(["run", "--format", "plain text"]);
+    expect(() => tokenizeHddCliArguments("run; whoami")).toThrow("shell 字符");
+    expect(expandHddCliArguments({ preset: "opencode", argsTemplate: "run --format default" }, "ollama/qwen3.5:9b-64k", "回答问题")).toEqual({
+      args: ["run", "--format", "default", "--model", "ollama/qwen3.5:9b-64k", "回答问题"],
+      promptProvided: true,
+    });
+    expect(expandHddCliArguments({ preset: "opencode", argsTemplate: "run --format default" }, "ollama/qwen3.5:9b-64k", "回答问题", "high").args).toEqual(["run", "--format", "default", "--model", "ollama/qwen3.5:9b-64k", "--variant", "high", "回答问题"]);
+    expect(expandHddCliArguments({ preset: "generic", argsTemplate: "--prompt {prompt}" }, "", "比较 A; B")).toEqual({ args: ["--prompt", "比较 A; B"], promptProvided: true });
+  });
+
+  it("accepts bounded H.D.D custom instructions", () => {
+    expect(parseHddCustomInstructions({ customInstructions: "  先给结论  " })).toBe("先给结论");
+    expect(parseHddCustomInstructions({})).toBeUndefined();
+    expect(() => parseHddCustomInstructions({ customInstructions: "x".repeat(12_001) })).toThrow("12000");
   });
 });

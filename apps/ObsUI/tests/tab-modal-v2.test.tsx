@@ -69,6 +69,34 @@ describe("TabModalV2 controls", () => {
     act(() => { rail.scrollLeft = 460; rail.dispatchEvent(new Event("scroll")); });
     expect(next.disabled).toBe(true);
   });
+
+  it("can render a card rail as a clean separated block without redundant chrome", () => {
+    const host = mount(<CardRail title="本机状态" showChrome={false}><div>设备档案</div><div>系统状态</div></CardRail>);
+
+    expect(host.querySelector('[aria-label="本机状态"]')).not.toBeNull();
+    expect(host.querySelector(".tab-modal-v2__rail-heading")).toBeNull();
+    expect(host.querySelector(".tab-modal-v2__rail-controls")).toBeNull();
+    expect(host.querySelector("[data-v2-rail]")?.textContent).toContain("设备档案");
+  });
+
+  it("only shows actionable edge arrows for the available local-rail direction", () => {
+    const host = mount(<CardRail title="本机状态" showChrome={false} showEdgeControls><div style={{ width: "220px", flex: "0 0 220px" }}>A</div><div style={{ width: "220px", flex: "0 0 220px" }}>B</div><div style={{ width: "220px", flex: "0 0 220px" }}>C</div></CardRail>);
+    const rail = host.querySelector<HTMLElement>("[data-v2-rail]")!;
+    Object.defineProperties(rail, {
+      clientWidth: { configurable: true, value: 220 },
+      scrollWidth: { configurable: true, value: 680 },
+    });
+
+    act(() => rail.dispatchEvent(new Event("scroll")));
+    expect(host.querySelector('button[aria-label="本机状态向左滚动"]')).toBeNull();
+    act(() => host.querySelector<HTMLButtonElement>('button[aria-label="本机状态向右滚动"]')?.click());
+    expect(host.querySelector('button[aria-label="本机状态向左滚动"]')).not.toBeNull();
+    expect(host.querySelector('button[aria-label="本机状态向右滚动"]')).not.toBeNull();
+
+    act(() => { rail.scrollLeft = 460; rail.dispatchEvent(new Event("scroll")); });
+    expect(host.querySelector('button[aria-label="本机状态向左滚动"]')).not.toBeNull();
+    expect(host.querySelector('button[aria-label="本机状态向右滚动"]')).toBeNull();
+  });
 });
 
 function TabHarness() {

@@ -97,10 +97,11 @@
   flex: 1 1 560px;
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  overflow: hidden;
-  border: 1px solid #454a51;
-  border-radius: 8px;
-  background: #23262a;
+  gap: 4px;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .obsui-v1-shell .tab-modal-v2__top-tab {
@@ -111,23 +112,29 @@
   justify-content: center;
   gap: 4px;
   padding: 0 8px;
-  border: 0;
-  border-right: 1px solid #3a3f46;
-  background: transparent;
-  color: #9da3aa;
-  font-size: 12px;
-  font-weight: 650;
+  border: 1px solid #111;
+  border-radius: 8px 8px 3px 3px;
+  background: #4b4b4b;
+  color: #f7f7f5;
+  font-size: 14px;
+  font-style: normal;
+  font-weight: 900;
   letter-spacing: 0;
   white-space: nowrap;
-  transition: color 150ms ease, background-color 150ms ease;
+  transition: color 180ms ease, background-color 180ms ease, box-shadow 220ms ease, transform 220ms cubic-bezier(.22, .8, .26, 1);
 }
 
 .obsui-v1-shell .tab-modal-v2__top-tab:last-child {
-  border-right: 0;
+  border-right: 1px solid #111;
 }
 
 .obsui-v1-shell .tab-modal-v2__top-tab::before {
   display: none;
+}
+
+.obsui-v1-shell .tab-modal-v2__top-tab > span {
+  display: inline-block;
+  transform: skewX(-8deg);
 }
 
 .obsui-v1-shell .tab-modal-v2__top-tab:hover,
@@ -140,6 +147,7 @@
 .obsui-v1-shell .tab-modal-v2__top-tab.is-selected {
   color: #fff0a4;
   background: #343128;
+  animation: obsui-v1-top-tab-settle 240ms cubic-bezier(.22, .8, .26, 1);
 }
 
 .obsui-v1-shell .tab-modal-v2__top-tab svg {
@@ -252,6 +260,20 @@
 @keyframes obsui-v1-page-in {
   from { opacity: .72; }
   to { opacity: 1; }
+}
+
+@keyframes obsui-v1-top-tab-settle {
+  from { filter: brightness(.88); transform: translateY(1px); }
+  55% { filter: brightness(1.12); transform: translateY(0); }
+  to { filter: brightness(1); transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .obsui-v1-shell .tab-modal-v2__top-tab,
+  .obsui-v1-shell .tab-modal-v2__top-tab.is-selected {
+    animation: none;
+    transition: none;
+  }
 }
 
 /* The remaining V2 pages are structural placeholders for now. Keep their

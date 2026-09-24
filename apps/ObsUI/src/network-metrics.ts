@@ -46,6 +46,19 @@ const asNonEmptyString = (value: unknown) => typeof value === "string" && value.
 const asNullableString = (value: unknown) => value === null ? null : asNonEmptyString(value);
 const asNonNegativeNumber = (value: unknown) => typeof value === "number" && Number.isFinite(value) && value >= 0 ? Math.round(value) : null;
 
+export function decodeUtf8Base64(value: unknown): string | null {
+  const encoded = asNonEmptyString(value);
+  if (!encoded || encoded.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(encoded)) return null;
+  try {
+    const binary = atob(encoded);
+    const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+    const decoded = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    return decoded.includes("\uFFFD") ? null : asNonEmptyString(decoded);
+  } catch {
+    return null;
+  }
+}
+
 export function calculateTrafficRates(previous: NetworkCounterSample | null, current: NetworkCounterSample) {
   if (!previous || previous.adapterId !== current.adapterId || current.sampledAt <= previous.sampledAt) return null;
   if (current.receivedBytes < previous.receivedBytes || current.sentBytes < previous.sentBytes) return null;

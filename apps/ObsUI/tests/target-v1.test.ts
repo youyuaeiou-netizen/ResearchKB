@@ -1,10 +1,14 @@
 import type { Task } from "../src/types";
 import {
   buildTargetCalendar,
+  buildTargetCalendarMondayFirst,
   cancelTargetTask,
   clearCompletedOnMonthChange,
+  deadlineForDate,
   deadlineProgress,
   findTaskForDate,
+  formatDueTime,
+  isValidTimeKey,
   localDateKey,
   markTargetTaskCompleted,
   remainingTimeLabel,
@@ -77,5 +81,25 @@ describe("Target Functional V1 rules", () => {
     expect(remainingTimeLabel(overdue, now)).toContain("已逾期");
     expect(remainingTimeLabel(completed, now)).toBe("已完成");
     expect(deadlineProgress(completed, now)).toBe(100);
+  });
+
+  it("builds a Monday-first six-week calendar for the monthly view", () => {
+    const cells = buildTargetCalendarMondayFirst(2026, 8);
+    expect(cells).toHaveLength(42);
+    expect(cells[0]).toMatchObject({ date: "2026-08-31", day: 31, inMonth: false });
+    expect(cells.find((cell) => cell.date === "2026-09-01")).toMatchObject({ day: 1, inMonth: true });
+    expect(cells.at(-1)).toMatchObject({ date: "2026-10-11", inMonth: false });
+  });
+
+  it("uses the selected local time and keeps date-only tasks at the legacy end-of-day deadline", () => {
+    expect(isValidTimeKey("08:05")).toBe(true);
+    expect(isValidTimeKey("23:59")).toBe(true);
+    expect(isValidTimeKey("24:00")).toBe(false);
+    expect(isValidTimeKey("8:05")).toBe(false);
+    expect(formatDueTime()).toBe("23:59");
+    expect(deadlineForDate("2026-08-27", "08:05")?.getHours()).toBe(8);
+    expect(deadlineForDate("2026-08-27", "08:05")?.getMinutes()).toBe(5);
+    expect(deadlineForDate("2026-08-27")?.getHours()).toBe(23);
+    expect(deadlineForDate("2026-08-27")?.getMinutes()).toBe(59);
   });
 });

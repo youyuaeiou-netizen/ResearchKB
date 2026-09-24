@@ -2,16 +2,21 @@ import { Children, useCallback, useEffect, useMemo, useRef, useState, type Chang
 import type { IconType } from "react-icons";
 import {
   IoCheckboxOutline,
-  IoCloudyNightOutline,
+  IoCloudOutline,
   IoCubeOutline,
+  IoEyeOffOutline,
   IoBookOutline,
-  IoGlobeOutline,
   IoHardwareChipOutline,
   IoLayersOutline,
+  IoMoonOutline,
   IoPowerOutline,
   IoPulseOutline,
+  IoRainyOutline,
   IoServerOutline,
   IoSettingsOutline,
+  IoSnowOutline,
+  IoSunnyOutline,
+  IoThunderstormOutline,
   IoTimerOutline,
 } from "react-icons/io5";
 import iconUrl from "../assets/obsui.ico";
@@ -32,28 +37,47 @@ import {
   createId,
   createInitialState,
   loadAppState,
+  loadWorkbenchSettings,
   parseBackup,
   saveAppState,
+  saveWorkbenchSettings,
   touch,
 } from "./storage";
 import { calendarMonthTitle, dateKey, getCalendarMonthDays, shiftCalendarMonth } from "./calendar";
-import { parseCodexUsage, type CodexUsage } from "./codex-usage";
+import { codexUsageWindowLabel, parseCodexUsage, sortCodexUsageWindows, type CodexUsage } from "./codex-usage";
+import { parseCodexAutomationsState, type CodexAutomation, type CodexAutomationsState } from "./codex-automations";
+import { selectDashboardTasks } from "./dashboard-data";
 import { parseLocalModelState, type LocalModelState } from "./local-models";
+import type { LiteratureItemsResponse, LiteratureRuntimeStatus, LiteratureUnifiedItem } from "./literature";
 import { parseNetworkEgressState, parseNetworkMetrics, type NetworkEgressState, type NetworkMetrics } from "./network-metrics";
 import { parseSystemMetrics, type SystemMetrics } from "./system-metrics";
+import { parseWeatherApiState, type WeatherSnapshot } from "./weather";
+import { readStoredWeatherLocation, saveWeatherLocation, type WeatherCoordinates } from "./weather-location";
+import { startRefreshLoop, startVisibleRefreshLoop } from "./refresh-loop";
+import { StartupOverlay, type StartupSignals } from "./startup";
 import type { AppState, Priority, Project, ProjectKind, Resource, ResourceKind, Task, TaskStatus } from "./types";
+import type { RepositoryEntry, RepositoryRelation } from "./repositories";
 import { Badge, Button, Card, Input, NumberDisplay, Panel, Progress, ScrollArea } from "./ui";
 import { HddChatPanel } from "./HddChatPanel";
+import { SettingsCenter, type SettingsSection } from "./SettingsCenter";
+import { ScreenshotControl } from "./ScreenshotControl";
+import { DEFAULT_WORKBENCH_SETTINGS, type WorkbenchSettings } from "./workbench-settings";
 import { TabModalV2 } from "./tab-modal-v2/TabModalV2";
 import { v2TabFromView, v2ViewForTab, type ProxyLaunchResult, type V2BusinessContext } from "./tab-modal-v2/model";
-import { cancelTargetTask as removeTargetTask, clearCompletedOnMonthChange, findTaskForDate, isCompletedTask, isValidDateKey, localDateKey, markTargetTaskCompleted, type TargetMutationResult, type TargetTaskDraft } from "./target-v1/task-model";
+import { cancelTargetTask as removeTargetTask, clearCompletedOnMonthChange, findTaskForDate, formatDueTime, isCompletedTask, isValidDateKey, isValidTimeKey, localDateKey, markTargetTaskCompleted, normalizeDueTime, type TargetMutationResult, type TargetTaskDraft } from "./target-v1/task-model";
 
 type DashboardView = "overview" | "library" | "planner" | "automation" | "monitor" | "settings" | "repository" | "hdd";
 type View = DashboardView | "calendar" | "projects" | "tasks" | "resources" | "recycle";
 
 const today = () => localDateKey(new Date());
 const dateLabel = (date: string | null) => date ? new Date(`${date}T12:00:00`).toLocaleDateString("zh-CN", { month: "short", day: "numeric" }) : "未设定";
+const missionDateLabel = (date: string | null) => date ? date.replaceAll("-", ".") : "未设定";
 const networkEgressRefreshIntervalMs = 60_000;
+const networkEgressRetryIntervalMs = 5_000;
+const codexUsageRefreshIntervalMs = 60_000;
+const codexUsageRetryIntervalMs = 5_000;
+const codexAutomationRefreshIntervalMs = 60_000;
+const codexUsageStaleAfterMs = 5 * 60_000;
 const localModelRefreshIntervalMs = 30_000;
 const kindLabel: Record<ProjectKind, string> = { course: "课程", research: "科研", personal: "个人" };
 const statusLabel: Record<TaskStatus, string> = { active: "进行中", completed: "已完成" };
@@ -78,6 +102,13 @@ type CodexUsageState = { status: "loading" | "ready" | "unavailable"; data: Code
 type NetworkMetricsState = { status: "loading" | "ready" | "unavailable"; data: NetworkMetrics | null };
 type NetworkEgressViewState = { loading: boolean; data: NetworkEgressState };
 type LocalModelsViewState = { loading: boolean; data: LocalModelState };
+type WeatherViewState = { status: "locating" | "loading" | "ready" | "denied" | "unavailable"; data: WeatherSnapshot | null; retry: () => void };
+type LiteratureStartupState = {
+  status: "loading" | "ready" | "unavailable";
+  zoteroEnabled: boolean | null;
+  runtime: LiteratureRuntimeStatus | null;
+  items: LiteratureUnifiedItem[] | null;
+};
 
 function useCardRailDrag() {
   const railRef = useRef<HTMLDivElement>(null);
@@ -154,9 +185,8 @@ function useSystemMetrics(enabled = true): SystemMetricsState {
         pending = false;
       }
     };
-    void refresh();
-    const timer = window.setInterval(() => void refresh(), 2000);
-    return () => { disposed = true; window.clearInterval(timer); };
+    const stopRefreshLoop = startVisibleRefreshLoop(refresh, 3000);
+    return () => { disposed = true; stopRefreshLoop(); };
   }, [enabled]);
 
   return metrics;
@@ -173,25 +203,131 @@ function useCodexUsage(enabled = true): CodexUsageState {
     let disposed = false;
     let pending = false;
     const refresh = async () => {
-      if (pending) return;
+      if (pending) return false;
       pending = true;
       try {
         const response = await fetch("/api/codex-usage", { cache: "no-store" });
         const usage = response.ok ? parseCodexUsage(await response.json()) : null;
         if (!usage) throw new Error("Codex usage is unavailable.");
         if (!disposed) setUsage({ status: "ready", data: usage });
+        return true;
       } catch {
         if (!disposed) setUsage((current) => ({ status: "unavailable", data: current.data }));
+        return false;
       } finally {
         pending = false;
       }
     };
-    void refresh();
-    const timer = window.setInterval(() => void refresh(), 60_000);
-    return () => { disposed = true; window.clearInterval(timer); };
+    const stopRefreshLoop = startRefreshLoop(refresh, codexUsageRefreshIntervalMs, codexUsageRetryIntervalMs);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") void refresh();
+    };
+    const onFocus = () => void refresh();
+    const onPageShow = () => void refresh();
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    window.addEventListener("focus", onFocus);
+    window.addEventListener("pageshow", onPageShow);
+    return () => {
+      disposed = true;
+      stopRefreshLoop();
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("pageshow", onPageShow);
+    };
   }, [enabled]);
 
   return usage;
+}
+
+function createObsUiPageToken() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function useObsUiHWiNFOLifecycle() {
+  useEffect(() => {
+    // React StrictMode intentionally mounts effects twice in development. A
+    // fresh token per effect prevents the first cleanup request from releasing
+    // the replacement session that is still active.
+    const pageToken = createObsUiPageToken();
+    let active = false;
+    let eventStream: EventSource | null = null;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    const bodyText = JSON.stringify({ pageToken });
+
+    const scheduleRetry = () => {
+      if (retryTimer !== null) return;
+      retryTimer = setTimeout(() => {
+        retryTimer = null;
+        openSession();
+      }, 1_000);
+    };
+
+    const openSession = () => {
+      if (active) return;
+      active = true;
+      if (typeof EventSource === "function") {
+        eventStream = new EventSource(`/api/hwinfo/session?pageToken=${encodeURIComponent(pageToken)}`, { withCredentials: true });
+        eventStream.addEventListener("error", () => {
+          // EventSource normally reconnects itself. Make the retry explicit so
+          // a failed first request during a cold desktop launch cannot leave
+          // HWiNFO unopened.
+          eventStream?.close();
+          eventStream = null;
+          active = false;
+          scheduleRetry();
+        });
+        return;
+      }
+      void fetch("/api/hwinfo/open", {
+        method: "POST",
+        body: bodyText,
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        cache: "no-store",
+      }).catch(() => {
+        active = false;
+        scheduleRetry();
+      });
+    };
+
+    const closeSession = () => {
+      if (!active) return;
+      active = false;
+      if (retryTimer !== null) {
+        clearTimeout(retryTimer);
+        retryTimer = null;
+      }
+      const body = new Blob([bodyText], { type: "application/json" });
+      // Queue the explicit close before aborting SSE. On a fast browser/app
+      // shutdown the SSE `close` event may never reach Vite, while Beacon or a
+      // keepalive request can still release the page token.
+      const beaconQueued = typeof navigator.sendBeacon === "function" && navigator.sendBeacon("/api/hwinfo/close", body);
+      if (!beaconQueued) {
+        void fetch("/api/hwinfo/close", { method: "POST", body: bodyText, headers: { "Content-Type": "application/json" }, credentials: "same-origin", keepalive: true }).catch(() => undefined);
+      }
+      eventStream?.close();
+      eventStream = null;
+    };
+
+    const onPageHide = () => closeSession();
+    const onPageShow = () => openSession();
+    const onBeforeUnload = () => closeSession();
+
+    // Keep the sensor session while the page is open, including in a background
+    // tab. Closing on visibilitychange could stop HWiNFO during browser startup.
+    openSession();
+    window.addEventListener("pagehide", onPageHide);
+    window.addEventListener("pageshow", onPageShow);
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => {
+      window.removeEventListener("pagehide", onPageHide);
+      window.removeEventListener("pageshow", onPageShow);
+      window.removeEventListener("beforeunload", onBeforeUnload);
+      if (retryTimer !== null) clearTimeout(retryTimer);
+      closeSession();
+    };
+  }, []);
 }
 
 function useNetworkMetrics(enabled = true): NetworkMetricsState {
@@ -218,20 +354,19 @@ function useNetworkMetrics(enabled = true): NetworkMetricsState {
         pending = false;
       }
     };
-    void refresh();
-    const timer = window.setInterval(() => void refresh(), 2000);
-    return () => { disposed = true; window.clearInterval(timer); };
+    const stopRefreshLoop = startVisibleRefreshLoop(refresh, 3000);
+    return () => { disposed = true; stopRefreshLoop(); };
   }, [enabled]);
 
   return metrics;
 }
 
 function useNetworkEgress(enabled = true): NetworkEgressViewState & { refresh: () => void } {
-  const [state, setState] = useState<NetworkEgressViewState>({ loading: false, data: { status: "idle", checkedAt: null, data: null } });
+  const [state, setState] = useState<NetworkEgressViewState>({ loading: enabled, data: { status: "idle", checkedAt: null, data: null } });
   const pendingRef = useRef(false);
 
   const refresh = useCallback(async () => {
-    if (!enabled || pendingRef.current) return;
+    if (!enabled || pendingRef.current) return false;
     pendingRef.current = true;
     setState((current) => ({ ...current, loading: true }));
     try {
@@ -242,8 +377,10 @@ function useNetworkEgress(enabled = true): NetworkEgressViewState & { refresh: (
       const next = parseNetworkEgressState(await response.json());
       if (!next) throw new Error("Network egress data is unavailable.");
       setState({ loading: false, data: next });
+      return next.status === "ready" || next.status === "unconfigured";
     } catch {
       setState({ loading: false, data: { status: "unavailable", checkedAt: null, data: null } });
+      return false;
     } finally {
       pendingRef.current = false;
     }
@@ -254,22 +391,144 @@ function useNetworkEgress(enabled = true): NetworkEgressViewState & { refresh: (
       setState({ loading: false, data: { status: "idle", checkedAt: null, data: null } });
       return;
     }
-    void refresh();
-    const timer = window.setInterval(() => void refresh(), networkEgressRefreshIntervalMs);
-    return () => window.clearInterval(timer);
+    return startVisibleRefreshLoop(refresh, networkEgressRefreshIntervalMs, networkEgressRetryIntervalMs);
   }, [enabled, refresh]);
   return { ...state, refresh: () => { void refresh(); } };
 }
 
-function useLocalModels(enabled = true): LocalModelsViewState {
+function useLocalModels(enabled = true): LocalModelsViewState & { refresh: () => void } {
   const [state, setState] = useState<LocalModelsViewState>(() => ({
     loading: enabled,
     data: { status: "unavailable", checkedAt: null, models: [] },
   }));
+  const pendingRef = useRef(false);
+
+  const refresh = useCallback(async () => {
+    if (!enabled || pendingRef.current) return;
+    pendingRef.current = true;
+    setState((current) => ({ ...current, loading: true }));
+    try {
+      const response = await fetch("/api/local-models", { cache: "no-store" });
+      const next = parseLocalModelState(await response.json());
+      if (!next) throw new Error("Local models are unavailable.");
+      setState((current) => ({ loading: false, data: next.status === "unavailable" && !next.models.length && current.data.models.length ? { ...next, models: current.data.models } : next }));
+    } catch {
+      setState((current) => ({ loading: false, data: { ...current.data, status: "unavailable", checkedAt: null, busy: { status: "unknown", runningModels: [] } } }));
+    } finally {
+      pendingRef.current = false;
+    }
+  }, [enabled]);
 
   useEffect(() => {
     if (!enabled) {
       setState({ loading: false, data: { status: "unavailable", checkedAt: null, models: [] } });
+      return;
+    }
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), localModelRefreshIntervalMs);
+    return () => window.clearInterval(timer);
+  }, [enabled, refresh]);
+
+  return { ...state, refresh: () => { void refresh(); } };
+}
+
+function useWeather(enabled = true): WeatherViewState {
+  const coordinatesRef = useRef<WeatherCoordinates | null>(null);
+  const [state, setState] = useState<Omit<WeatherViewState, "retry">>(() => {
+    const stored = readStoredWeatherLocation();
+    coordinatesRef.current = stored;
+    return { status: enabled ? "loading" : "unavailable", data: null };
+  });
+  const pendingRef = useRef<Promise<boolean> | null>(null);
+  const aliveRef = useRef(true);
+
+  useEffect(() => {
+    aliveRef.current = true;
+    return () => { aliveRef.current = false; };
+  }, []);
+
+  const fetchWeather = useCallback(async (coordinates: WeatherCoordinates | null = null) => {
+    if (pendingRef.current) return pendingRef.current;
+    if (aliveRef.current) setState((current) => ({ ...current, status: "loading" }));
+    const request = (async () => {
+      const query = coordinates ? new URLSearchParams({ latitude: String(coordinates.latitude), longitude: String(coordinates.longitude) }) : null;
+      try {
+        const response = await fetch(`/api/weather${query ? `?${query.toString()}` : ""}`, { cache: "no-store" });
+        const next = parseWeatherApiState(await response.json());
+        if (!next || next.status !== "ready" || !next.data) throw new Error("Weather is unavailable.");
+        if (aliveRef.current) setState({ status: "ready", data: next.data });
+        return true;
+      } catch {
+        if (aliveRef.current) setState((current) => ({ status: "unavailable", data: current.data }));
+        return false;
+      }
+    })();
+    pendingRef.current = request;
+    void request.finally(() => {
+      if (pendingRef.current === request) pendingRef.current = null;
+    });
+    return request;
+  }, []);
+
+  const requestCurrentLocation = useCallback(() => {
+    if (!enabled) return;
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setState((current) => ({ status: "denied", data: current.data }));
+      return;
+    }
+    setState((current) => ({ status: "locating", data: current.data }));
+    navigator.geolocation.getCurrentPosition((position) => {
+      const latitude = position.coords.latitude;
+      const longitude = position.coords.longitude;
+      if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90 || !Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+        setState((current) => ({ status: "unavailable", data: current.data }));
+        return;
+      }
+      coordinatesRef.current = { latitude, longitude };
+      saveWeatherLocation(coordinatesRef.current);
+      void fetchWeather(coordinatesRef.current);
+    }, (error) => {
+      // 只有浏览器明确拒绝权限时才显示“需要授权”；超时或系统定位失败不应误导用户去改权限。
+      setState((current) => ({ status: error.code === 1 ? "denied" : "unavailable", data: current.data }));
+    }, { enableHighAccuracy: false, timeout: 10_000, maximumAge: 15 * 60_000 });
+  }, [enabled, fetchWeather]);
+
+  const loadWeather = useCallback(() => {
+    if (!enabled) return;
+    const stored = coordinatesRef.current ?? readStoredWeatherLocation();
+    if (stored) {
+      coordinatesRef.current = stored;
+      void fetchWeather(stored);
+      return;
+    }
+    // Automatic refreshes must stay permission-free. A browser location prompt is
+    // only allowed after the user explicitly presses the retry button.
+    void fetchWeather();
+  }, [enabled, fetchWeather]);
+
+  useEffect(() => {
+    if (!enabled) {
+      setState({ status: "unavailable", data: null });
+      return;
+    }
+    loadWeather();
+    const timer = window.setInterval(() => {
+      const coordinates = coordinatesRef.current;
+      if (coordinates) void fetchWeather(coordinates);
+      else void fetchWeather();
+    }, 15 * 60_000);
+    return () => window.clearInterval(timer);
+  }, [enabled, fetchWeather, loadWeather]);
+
+  return { ...state, retry: requestCurrentLocation };
+}
+
+function useCodexAutomations(enabled = true): CodexAutomationsState {
+  const [state, setState] = useState<CodexAutomationsState>(() => ({ status: enabled ? "ready" : "unavailable", checkedAt: null, data: [] }));
+
+  useEffect(() => {
+    if (!enabled) {
+      setState({ status: "unavailable", checkedAt: null, data: [] });
       return;
     }
     let disposed = false;
@@ -277,49 +536,73 @@ function useLocalModels(enabled = true): LocalModelsViewState {
     const refresh = async () => {
       if (pending) return;
       pending = true;
-      if (!disposed) setState((current) => ({ ...current, loading: true }));
+      if (!disposed) setState((current) => ({ ...current, status: current.data.length ? current.status : "ready" }));
       try {
-        const response = await fetch("/api/local-models", { cache: "no-store" });
-        const next = parseLocalModelState(await response.json());
-        if (!next) throw new Error("Local models are unavailable.");
-        if (!disposed) setState({ loading: false, data: next });
+        const response = await fetch("/api/codex-automations", { cache: "no-store" });
+        const next = parseCodexAutomationsState(await response.json());
+        if (!next) throw new Error("Codex automations are unavailable.");
+        if (!disposed) setState(next);
       } catch {
-        if (!disposed) setState({ loading: false, data: { status: "unavailable", checkedAt: null, models: [] } });
+        if (!disposed) setState((current) => ({ status: "unavailable", checkedAt: current.checkedAt, data: current.data }));
       } finally {
         pending = false;
       }
     };
     void refresh();
-    const timer = window.setInterval(() => void refresh(), localModelRefreshIntervalMs);
-    return () => { disposed = true; window.clearInterval(timer); };
+    const timer = window.setInterval(() => void refresh(), codexAutomationRefreshIntervalMs);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") void refresh();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
   }, [enabled]);
 
   return state;
 }
 
 function App() {
+  useObsUiHWiNFOLifecycle();
   const tabModalV2Enabled = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("ui") === "tab-v2";
-  const [view, setView] = useState<DashboardView>(() => tabModalV2Enabled ? "planner" : "overview");
+  // Both the legacy shell and the V2 shell should open on the dashboard home.
+  // Workspaces are opened explicitly through the navigation/cards.
+  const [view, setView] = useState<DashboardView>("overview");
   const [state, setState] = useState<AppState>(() => createInitialState());
+  const [workbenchSettings, setWorkbenchSettings] = useState<WorkbenchSettings>(() => structuredClone(DEFAULT_WORKBENCH_SETTINGS));
+  const [workbenchSettingsReady, setWorkbenchSettingsReady] = useState(false);
+  const [literatureStartup, setLiteratureStartup] = useState<LiteratureStartupState>({ status: "loading", zoteroEnabled: null, runtime: null, items: null });
+  const [settingsSection, setSettingsSection] = useState<SettingsSection>("appearance");
   const [ready, setReady] = useState(false);
   const [notice, setNotice] = useState("");
   const [storageError, setStorageError] = useState<string | null>(null);
   const [automationRunning, setAutomationRunning] = useState(false);
   const [automationSeconds, setAutomationSeconds] = useState(4 * 60 * 60 + 12 * 60 + 36);
+  const [wallpaperOnly, setWallpaperOnly] = useState(false);
   const importRef = useRef<HTMLInputElement>(null);
-  const systemMetrics = useSystemMetrics();
+  const modalOpen = view !== "overview";
+  // The overview cards show the same live values as the monitor page. The
+  // server-side collectors use hidden child processes and a short cache, so
+  // keeping them active on the overview does not open a console window.
+  const telemetryEnabled = view === "overview" || view === "monitor";
+  const systemMetrics = useSystemMetrics(telemetryEnabled);
   const codexUsage = useCodexUsage();
-  const networkMetrics = useNetworkMetrics();
+  const networkMetrics = useNetworkMetrics(telemetryEnabled);
   const networkEgress = useNetworkEgress();
   const localModels = useLocalModels();
+  const dashboardVisible = !tabModalV2Enabled || view === "overview";
+  const weather = useWeather(dashboardVisible);
+  const codexAutomations = useCodexAutomations(dashboardVisible);
   const cardRail = useCardRailDrag();
   const modalRef = useRef<HTMLElement>(null);
   const closeDeviceRef = useRef<HTMLButtonElement>(null);
   const sidebarRef = useRef<HTMLElement>(null);
   const dashboardRef = useRef<HTMLElement>(null);
+  const hideButtonRef = useRef<HTMLButtonElement>(null);
   const modalOpenerRef = useRef<HTMLElement | null>(null);
   const wasModalOpenRef = useRef(false);
-  const modalOpen = view !== "overview";
 
   const openWorkspace = (next: DashboardView) => {
     if (!modalOpen) {
@@ -327,6 +610,10 @@ function App() {
       modalOpenerRef.current = activeElement instanceof HTMLElement ? activeElement : null;
     }
     setView(next);
+  };
+  const openSettings = (section: SettingsSection = "appearance") => {
+    setSettingsSection(section);
+    openWorkspace("settings");
   };
   const closeWorkspace = () => setView("overview");
 
@@ -338,6 +625,47 @@ function App() {
       setReady(true);
     });
   }, []);
+
+  useEffect(() => {
+    loadWorkbenchSettings()
+      .then((loaded) => setWorkbenchSettings(loaded))
+      .catch(() => setNotice("工作台设置读取失败，当前使用默认设置。"))
+      .finally(() => setWorkbenchSettingsReady(true));
+  }, []);
+
+  useEffect(() => {
+    let disposed = false;
+    void (async () => {
+      try {
+        // A reused Vite process still needs to launch enabled companions. The
+        // endpoint waits for Zotero's local API before this startup gate opens.
+        const launchResponse = await fetch("/api/workbench-startup/launch", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+        const launchPayload = await launchResponse.json() as { applications?: { zotero?: boolean }; message?: string };
+        if (!launchResponse.ok) throw new Error(launchPayload.message || "随行应用启动检查失败。");
+        const zoteroEnabled = launchPayload.applications?.zotero === true;
+        const [runtimeResponse, itemsResponse] = await Promise.all([
+          fetch("/api/literature/status", { cache: "no-store" }),
+          fetch("/api/literature/items?collection=all", { cache: "no-store" }),
+        ]);
+        const runtime = await runtimeResponse.json() as LiteratureRuntimeStatus & { message?: string };
+        const itemsPayload = await itemsResponse.json() as LiteratureItemsResponse & { message?: string };
+        if (!runtimeResponse.ok) throw new Error(runtime.message || "文献运行状态检查失败。");
+        if (!itemsResponse.ok) throw new Error(itemsPayload.message || "文献条目预载失败。");
+        if (!disposed) setLiteratureStartup({ status: "ready", zoteroEnabled, runtime, items: itemsPayload.items });
+      } catch {
+        if (!disposed) setLiteratureStartup({ status: "unavailable", zoteroEnabled: null, runtime: null, items: null });
+      }
+    })();
+    return () => { disposed = true; };
+  }, []);
+
+  useEffect(() => {
+    if (!workbenchSettingsReady) return;
+    const timer = window.setTimeout(() => {
+      saveWorkbenchSettings(workbenchSettings).catch(() => setNotice("工作台设置保存失败，请检查浏览器存储权限。"));
+    }, 160);
+    return () => window.clearTimeout(timer);
+  }, [workbenchSettings, workbenchSettingsReady]);
 
   useEffect(() => {
     if (!ready) return;
@@ -374,6 +702,18 @@ function App() {
       if (opener?.isConnected) window.requestAnimationFrame(() => opener.focus());
     }
   }, [modalOpen]);
+
+  useEffect(() => {
+    if (!wallpaperOnly) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setWallpaperOnly(false);
+      window.requestAnimationFrame(() => hideButtonRef.current?.focus());
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [wallpaperOnly]);
 
   useEffect(() => {
     [sidebarRef.current, dashboardRef.current].forEach((element) => {
@@ -416,6 +756,8 @@ function App() {
   const commit = (next: AppState) => setState(touch(next));
   const activeProjects = state.projects.filter((project) => project.status === "active");
   const openTasks = state.tasks.filter((task) => !isCompletedTask(task));
+  const dashboardTasks = selectDashboardTasks(state.tasks);
+  const latestCodexAutomation = codexAutomations.data[0] ?? null;
   const dueSoon = openTasks.filter((task) => task.dueDate && task.dueDate <= new Date(Date.now() + 86400000 * 7).toISOString().slice(0, 10));
   const toggleTask = (id: string) => {
     const timestamp = new Date().toISOString();
@@ -428,13 +770,35 @@ function App() {
   };
 
   const addProject = (project: Omit<Project, "id" | "createdAt" | "updatedAt">) => commit({ ...state, projects: [{ ...project, id: createId("project"), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }, ...state.projects] });
-  const addTask = (task: Omit<Task, "id" | "createdAt" | "updatedAt">) => commit({ ...state, tasks: [{ ...task, id: createId("task"), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }, ...state.tasks] });
+  const addTask = (task: Omit<Task, "id" | "createdAt" | "updatedAt">) => commit({ ...state, tasks: [{ ...task, dueTime: normalizeDueTime(task.dueTime), id: createId("task"), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }, ...state.tasks] });
   const addResource = (resource: Omit<Resource, "id" | "createdAt">) => commit({ ...state, resources: [{ ...resource, id: createId("resource"), createdAt: new Date().toISOString() }, ...state.resources] });
+  const addRepository = (repository: Omit<RepositoryEntry, "id" | "createdAt" | "updatedAt">) => {
+    const timestamp = new Date().toISOString();
+    commit({ ...state, repositories: [{ ...repository, id: createId("repository"), createdAt: timestamp, updatedAt: timestamp }, ...(state.repositories ?? [])] });
+  };
+  const addRepositoryRelation = (a: string, b: string) => {
+    if (!a || !b || a === b) return;
+    const relations = state.repositoryRelations ?? [];
+    if (relations.some((relation) => relation.a === a && relation.b === b || relation.a === b && relation.b === a)) return;
+    const relation: RepositoryRelation = { id: createId("repository-relation"), a, b, createdAt: new Date().toISOString() };
+    commit({ ...state, repositoryRelations: [relation, ...relations] });
+  };
+  const removeRepositoryRelation = (id: string) => commit({ ...state, repositoryRelations: (state.repositoryRelations ?? []).filter((relation) => relation.id !== id) });
+  const removeRepository = (id: string) => {
+    const ownsNode = (nodeId: string) => nodeId === `repository:${id}` || nodeId.startsWith(`note:${id}:`);
+    commit({
+      ...state,
+      repositories: (state.repositories ?? []).filter((repository) => repository.id !== id),
+      repositoryRelations: (state.repositoryRelations ?? []).filter((relation) => !ownsNode(relation.a) && !ownsNode(relation.b)),
+    });
+  };
 
   const saveTargetTask = (draft: TargetTaskDraft): TargetMutationResult => {
     const title = draft.title.trim();
     const folderPath = draft.folderPath.trim();
+    const dueTime = normalizeDueTime(draft.dueTime);
     if (!isValidDateKey(draft.dueDate)) return { ok: false, message: "请选择有效日期。" };
+    if (draft.dueTime !== undefined && !isValidTimeKey(draft.dueTime)) return { ok: false, message: "请选择有效时间。" };
     if (!title) return { ok: false, message: "请输入目标名称。" };
     if (findTaskForDate(state.tasks, draft.dueDate, draft.id)) return { ok: false, message: "该日期已经有任务，一个日期只能保存一个任务。" };
     const timestamp = new Date().toISOString();
@@ -444,6 +808,7 @@ function App() {
       ...existing,
       title,
       dueDate: draft.dueDate,
+      dueTime,
       priority: draft.priority,
       folderPath,
       updatedAt: timestamp,
@@ -452,6 +817,7 @@ function App() {
       title,
       projectId: null,
       dueDate: draft.dueDate,
+      dueTime,
       status: "active",
       priority: draft.priority,
       folderPath,
@@ -539,11 +905,17 @@ function App() {
     networkMetrics,
     networkEgress,
     localModels,
+    literatureStartup,
     automation: { running: automationRunning, seconds: automationSeconds },
+    workbenchSettings,
     actions: {
       addProject,
       addResource,
       addTask,
+      addRepository,
+      removeRepository,
+      addRepositoryRelation,
+      removeRepositoryRelation,
       toggleTask,
       saveTargetTask,
       completeTargetTask,
@@ -557,8 +929,9 @@ function App() {
       resetDemo,
       launchFlClash,
       launchClashVerge,
-      openSettings: () => openWorkspace("settings"),
+      openSettings: () => openSettings("hdd"),
     },
+    hddSettings: workbenchSettings.hdd,
   };
 
   const renderWorkspace = () => {
@@ -568,30 +941,63 @@ function App() {
     if (view === "automation") return <AutomationPanel running={automationRunning} seconds={automationSeconds} onToggle={() => setAutomationRunning((running) => !running)} onReset={() => setAutomationSeconds(4 * 60 * 60 + 12 * 60 + 36)} />;
     if (view === "monitor") return <MonitorPanel metrics={systemMetrics} network={networkMetrics} egress={networkEgress} />;
     if (view === "repository") return <RepositoryPanel state={state} />;
-    if (view === "hdd") return <HddChatPanel onOpenSettings={() => openWorkspace("settings")} />;
+    if (view === "hdd") return <HddChatPanel settings={workbenchSettings.hdd} onOpenSettings={() => openSettings("hdd")} />;
     return <Settings onExport={exportData} onImport={() => importRef.current?.click()} onReset={resetDemo} updatedAt={state.updatedAt} network={networkMetrics} egress={networkEgress} />;
   };
   const selectedDeviceTab: DashboardView = view === "automation" ? "planner" : view === "settings" ? "hdd" : view;
   const selectedTab = deviceTabs.find((tab) => tab.key === selectedDeviceTab) ?? deviceTabs[0];
-  return <div className="app-shell" style={{ "--wallpaper": `url(${defaultWallpaperUrl})`, "--reference-ui": `url(${referenceUiUrl})`, "--reference-brand": `url(${referenceBrandUrl})`, "--reference-nav-1": `url(${referenceNav1Url})`, "--reference-nav-2": `url(${referenceNav2Url})`, "--reference-nav-3": `url(${referenceNav3Url})`, "--reference-nav-4": `url(${referenceNav4Url})` } as CSSProperties}>
+  const startupSignals: StartupSignals = {
+    storageReady: ready && workbenchSettingsReady,
+    weatherStatus: weather.status,
+    systemStatus: systemMetrics.status,
+    networkStatus: networkMetrics.status,
+    egressLoading: networkEgress.loading,
+    egressStatus: networkEgress.data.status,
+    localModelsLoading: localModels.loading,
+    codexStatus: codexUsage.status,
+    companionStatus: literatureStartup.status,
+  };
+  return <><div className={`app-shell${wallpaperOnly ? " is-wallpaper-only" : ""}`} style={{ "--wallpaper": `url(${workbenchSettings.wallpaperDataUrl ?? defaultWallpaperUrl})`, "--reference-ui": `url(${referenceUiUrl})`, "--reference-brand": `url(${referenceBrandUrl})`, "--reference-nav-1": `url(${referenceNav1Url})`, "--reference-nav-2": `url(${referenceNav2Url})`, "--reference-nav-3": `url(${referenceNav3Url})`, "--reference-nav-4": `url(${referenceNav4Url})` } as CSSProperties}>
     <div className="wallpaper-layer" aria-hidden="true" />
     <aside ref={sidebarRef} className="sidebar" aria-label="ObsUI 主导航" aria-hidden={modalOpen || undefined}>
-      <button className="brand" onClick={closeWorkspace} aria-label="返回 ObsUI 总览"><img src={iconUrl} alt="" /><span>Obs<span>UI</span></span></button>
+      <button className={`brand${workbenchSettings.profile.avatarDataUrl ? " has-custom-avatar" : ""}`} onClick={closeWorkspace} aria-label="返回 ObsUI 总览"><img className="brand-avatar" src={workbenchSettings.profile.avatarDataUrl ?? iconUrl} alt={workbenchSettings.profile.avatarDataUrl ? "个人头像" : ""} /><span>Obs<span>UI</span></span></button>
       <nav className="primary-navigation">{primaryNavigation.map(({ key, label, Icon }) => <button key={key} className={view === key ? "active" : ""} onClick={() => openWorkspace(key)} title={label} aria-label={label}><Icon aria-hidden="true" /><span>{label}</span></button>)}</nav>
       <div className="sidebar-footer"><span>LOCAL WORKBENCH</span><small>数据仅保存在本机</small></div>
     </aside>
     <main ref={dashboardRef} className="dashboard" aria-label="ObsUI 工作台" aria-hidden={modalOpen || undefined}>
-      <div className="dashboard-top-actions"><button onClick={() => openWorkspace("settings")} title="工作台设置" aria-label="工作台设置"><IoSettingsOutline /></button><button onClick={closeWorkspace} title="返回总览" aria-label="返回总览"><IoPowerOutline /></button></div>
+      <div className="dashboard-top-actions"><ScreenshotControl settings={workbenchSettings.screenshot} active={!modalOpen} /><button ref={hideButtonRef} className="dashboard-action-button" onClick={() => setWallpaperOnly(true)} title="隐藏工作台（Esc 恢复）" aria-label="隐藏工作台"><IoEyeOffOutline /></button><button className="dashboard-action-button" onClick={() => openSettings("appearance")} title="工作台设置" aria-label="工作台设置"><IoSettingsOutline /></button><button className="dashboard-action-button" onClick={closeWorkspace} title="返回总览" aria-label="返回总览"><IoPowerOutline /></button></div>
       <section className="dashboard-aside" aria-label="工作台状态">
-        <article className={`mission-card ${view === "planner" ? "selected" : ""}`} onClick={() => openWorkspace("planner")}><div className="date-weather"><small>{today().replaceAll("-", ".")}</small><IoCloudyNightOutline /><b>本地</b><strong>{openTasks.length} 项</strong></div><div className="mission-copy"><h2>计划任务</h2>{openTasks.slice(0, 2).map((task) => <button className="mission-task" onClick={(event) => { event.stopPropagation(); toggleTask(task.id); }} key={task.id}><IoCheckboxOutline /> {task.title}</button>)}{!openTasks.length && <p>今天没有待处理任务</p>}<button className="automation-status" onClick={(event) => { event.stopPropagation(); openWorkspace("automation"); }}><IoCubeOutline /><span>自动化计时</span><b>{formatDuration(automationSeconds)}</b></button></div></article>
-        <div className="insight-row"><article className={`system-card ${view === "monitor" ? "selected" : ""}`} onClick={() => openWorkspace("monitor")} title="每 2 秒读取一次本机 Windows 性能计数器"><span className="micro-label">{systemMetrics.status === "ready" ? "LIVE" : systemMetrics.status === "loading" ? "WAIT" : "OFFLINE"}</span><div><MetricLine label="CPU" value={systemMetrics.data?.cpu ?? null} Icon={IoHardwareChipOutline} /><MetricLine label="GPU" value={systemMetrics.data?.gpu ?? null} Icon={IoCubeOutline} /><MetricLine label="MEM" value={systemMetrics.data?.memory ?? null} Icon={IoLayersOutline} /><MetricLine label="DISK" value={systemMetrics.data?.disk ?? null} Icon={IoServerOutline} /></div></article><button className={`vault-card ${view === "library" ? "selected" : ""}`} onClick={() => openWorkspace("library")}><span className="micro-label">INFO</span><IoCubeOutline /><b>ResearchKB</b><small>本地资料入口</small></button></div>
-        <div className="insight-row"><NetworkCard metrics={networkMetrics} egress={networkEgress} onLaunch={launchFlClash} /><CodexQuotaCard usage={codexUsage} /></div>
+        <article className={`mission-card ${view === "planner" ? "selected" : ""}`} onClick={() => openWorkspace("planner")}>
+          <div className="mission-card-inner">
+            <div className="date-weather" aria-label="当前位置天气">
+              <small>{(weather.data?.today.date ?? today()).replaceAll("-", ".")}</small>
+              <WeatherGlyph code={weather.data?.current.weatherCode ?? null} isDay={weather.data?.current.isDay ?? true} />
+              <b>{weather.data?.current.description ?? weatherStatusLabel(weather.status)}</b>
+              <strong>{weather.data ? `${Math.round(weather.data.current.temperatureC)}°C` : weatherStatusTemperature(weather.status)}</strong>
+              {weather.data ? <span className="weather-range">最高 {Math.round(weather.data.today.maxC)}° / 最低 {Math.round(weather.data.today.minC)}°</span> : <span className="weather-status">{weatherStatusMessage(weather.status)}</span>}
+              {!weather.data && (weather.status === "denied" || weather.status === "unavailable") && <button type="button" className="weather-retry" title={weather.status === "denied" ? "先在地址栏允许位置权限" : "重新请求当前位置"} onClick={(event) => { event.stopPropagation(); weather.retry(); }}>重新定位</button>}
+            </div>
+            <div className="mission-copy">
+              <h2>当前目标</h2>
+              {dashboardTasks.map((task) => <div className="mission-task" key={task.id} onClick={(event) => event.stopPropagation()}><button type="button" className="mission-task-check-button" aria-pressed={isCompletedTask(task)} aria-label={`${isCompletedTask(task) ? "标记未完成" : "标记完成"}：${task.title}`} onClick={(event) => { event.stopPropagation(); toggleTask(task.id); }}><TaskCheckbox checked={isCompletedTask(task)} /></button><span className="mission-task-copy"><span>{task.title}</span><small>截止 {missionDateLabel(task.dueDate)}</small></span></div>)}
+              {!dashboardTasks.length && <p>当前没有未完成任务</p>}
+              <div className="automation-status" role="status" title={latestCodexAutomation ? `${latestCodexAutomation.name}${latestCodexAutomation.schedule ? ` · ${latestCodexAutomation.schedule}` : ""} · 更新于 ${new Date(latestCodexAutomation.updatedAt).toLocaleString("zh-CN")}` : "本机 Codex 自动化状态"} onClick={(event) => event.stopPropagation()}>
+                <IoCubeOutline />
+                <span>{latestCodexAutomation?.name ?? (codexAutomations.status === "unavailable" ? "自动化暂不可用" : "尚未检测到 Codex 自动化任务")}</span>
+                <b>{latestCodexAutomation ? formatAutomationStatus(latestCodexAutomation.status) : codexAutomations.status === "unavailable" ? "不可用" : "空"}</b>
+              </div>
+            </div>
+          </div>
+        </article>
+        <div className="insight-row"><article className={`system-card ${view === "monitor" ? "selected" : ""}`} onClick={() => openWorkspace("monitor")} title="每 3 秒读取一次本机 Windows 性能计数器"><span className="micro-label">{systemMetrics.status === "ready" ? "LIVE" : systemMetrics.status === "loading" ? "WAIT" : "OFFLINE"}</span><div><MetricLine label="CPU" value={systemMetrics.data?.cpu ?? null} Icon={IoHardwareChipOutline} /><MetricLine label="GPU" value={systemMetrics.data?.gpu ?? null} Icon={IoCubeOutline} /><MetricLine label="MEM" value={systemMetrics.data?.memory ?? null} Icon={IoLayersOutline} /><MetricLine label="DISK" value={systemMetrics.data?.disk ?? null} Icon={IoServerOutline} /></div></article><button className={`vault-card ${view === "library" ? "selected" : ""}`} onClick={() => openWorkspace("library")}><span className="micro-label">INFO</span><IoCubeOutline /><b>ResearchKB</b><small>本地资料入口</small></button></div>
+        <div className="insight-row"><NetworkCard metrics={networkMetrics} egress={networkEgress} /><CodexQuotaCard usage={codexUsage} /></div>
         <button className="space-card" onClick={() => openWorkspace("library")}><span>前往空间</span><b>KNOWLEDGE SPACE</b></button>
       </section>
       {notice && !tabModalV2Enabled && <button className="notice" onClick={() => setNotice("")} title="关闭提示">{notice}<span>×</span></button>}
       <input ref={importRef} type="file" accept="application/json" hidden onChange={importData} />
     </main>
-    {modalOpen && tabModalV2Enabled && <TabModalV2
+    {view === "settings" && <SettingsCenter initialSection={settingsSection} settings={workbenchSettings} onSettingsChange={setWorkbenchSettings} onClose={closeWorkspace} onExport={exportData} onImport={() => importRef.current?.click()} onReset={resetDemo} updatedAt={state.updatedAt} dialogRef={modalRef} closeRef={closeDeviceRef} />}
+    {modalOpen && view !== "settings" && tabModalV2Enabled && <TabModalV2
       activeTab={v2TabFromView(view)}
       activeView={view}
       context={v2Context}
@@ -600,7 +1006,7 @@ function App() {
       dialogRef={modalRef}
       closeRef={closeDeviceRef}
     />}
-    {modalOpen && !tabModalV2Enabled && <div className="device-modal">
+    {modalOpen && view !== "settings" && !tabModalV2Enabled && <div className="device-modal">
       <section ref={modalRef} className="device-workspace" role="dialog" aria-modal="true" aria-label={`${selectedTab.label}功能面板`}>
       <img className="device-shell-image" src={selectedTab.shellUrl} alt="" aria-hidden="true" />
       <div className="device-tabs" role="tablist" aria-label="设备功能切换">
@@ -613,34 +1019,81 @@ function App() {
       </div>
       </section>
     </div>}
-  </div>;
+  </div><StartupOverlay signals={startupSignals} hidden={wallpaperOnly} /></>;
+}
+
+function WeatherGlyph({ code, isDay }: { code: number | null; isDay: boolean }) {
+  if (code === null) return isDay ? <IoCloudOutline aria-hidden="true" /> : <IoMoonOutline aria-hidden="true" />;
+  if (code === 0) return isDay ? <IoSunnyOutline aria-hidden="true" /> : <IoMoonOutline aria-hidden="true" />;
+  if (code === 1 || code === 2 || code === 3) return <IoCloudOutline aria-hidden="true" />;
+  if (code === 45 || code === 48) return <IoCloudOutline aria-hidden="true" />;
+  if (code >= 51 && code <= 67 || code >= 80 && code <= 82) return <IoRainyOutline aria-hidden="true" />;
+  if (code >= 71 && code <= 77 || code === 85 || code === 86) return <IoSnowOutline aria-hidden="true" />;
+  if (code >= 95 && code <= 99) return <IoThunderstormOutline aria-hidden="true" />;
+  return <IoCloudOutline aria-hidden="true" />;
+}
+
+function weatherStatusLabel(status: WeatherViewState["status"]) {
+  if (status === "locating") return "正在定位";
+  if (status === "loading") return "正在读取";
+  if (status === "denied") return "需允许定位";
+  if (status === "unavailable") return "天气不可用";
+  return "天气";
+}
+
+function weatherStatusTemperature(status: WeatherViewState["status"]) {
+  if (status === "locating") return "定位中";
+  if (status === "loading") return "读取中";
+  if (status === "denied") return "需允许定位";
+  return "不可用";
+}
+
+function weatherStatusMessage(status: WeatherViewState["status"]) {
+  if (status === "denied") return "请在地址栏位置权限中选择允许，再点重新定位";
+  if (status === "unavailable") return "定位暂不可用，请稍后重试";
+  if (status === "locating") return "正在获取位置";
+  if (status === "loading") return "正在加载天气";
+  return "天气数据";
+}
+
+function formatAutomationStatus(status: CodexAutomation["status"]) {
+  if (status === "active") return "已启用";
+  if (status === "paused") return "已暂停";
+  return "状态未知";
 }
 
 function formatDuration(totalSeconds: number) { const hours = Math.floor(totalSeconds / 3600); const minutes = Math.floor((totalSeconds % 3600) / 60); const seconds = totalSeconds % 60; return [hours, minutes, seconds].map((part) => String(part).padStart(2, "0")).join(":"); }
 function MetricLine({ label, value, Icon }: { label: string; value: number | null; Icon: IconType }) { const percentage = value ?? 0; return <div className="metric-line"><span className="metric-icon"><Icon aria-hidden="true" /></span><span className="metric-label">{label}</span><b>{value === null ? "—" : `${value}%`}</b><div><i style={{ width: `${percentage}%` }} /></div></div>; }
-function quotaWindowLabel(windowMinutes: number | undefined) { return windowMinutes === 10_080 ? "本周额度" : "Codex 额度"; }
-function resetLabel(resetsAt: number | undefined) { return resetsAt ? new Date(resetsAt).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "—"; }
-function CodexQuotaCard({ usage }: { usage: CodexUsageState }) { const data = usage.data; const status = usage.status === "ready" ? "LIVE" : usage.status === "loading" ? "WAIT" : "OFFLINE"; return <article className="codex-quota-card" title="每 60 秒读取本机 Codex 会话中的额度记录；不读取或保存令牌。"><span className="micro-label">{status}</span><div className="quota-card-title"><IoPulseOutline /><b>Codex 额度</b><strong>{data ? `${data.remainingPercent}%` : "—"}</strong></div><div className="meter"><i style={{ width: `${data?.remainingPercent ?? 0}%` }} /></div><p><span className="quota-remaining">剩余 {data ? `${data.remainingPercent}%` : "—"}</span><span>已使用 {data ? `${data.usedPercent}%` : "—"}</span></p><small><IoTimerOutline aria-hidden="true" />{quotaWindowLabel(data?.windowMinutes)} · 重置于 {resetLabel(data?.resetsAt)}</small></article>; }
-function formatNetworkRate(value: number | null | undefined) { if (value === null || value === undefined) return "—"; const units = ["B/s", "KB/s", "MB/s", "GB/s"]; let amount = value; let unit = 0; while (amount >= 1024 && unit < units.length - 1) { amount /= 1024; unit += 1; } return `${amount >= 100 || unit === 0 ? Math.round(amount) : amount.toFixed(1)} ${units[unit]}`; }
-function countryFlag(countryCode: string | null | undefined) {
-  const code = countryCode?.trim().toUpperCase();
-  return code && /^[A-Z]{2}$/.test(code) ? String.fromCodePoint(...[...code].map((letter) => 127397 + letter.charCodeAt(0))) : null;
+function sampledLabel(sampledAt: number | undefined) { return sampledAt ? new Date(sampledAt).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "—"; }
+function quotaResetLabel(resetsAt: number | undefined, windowMinutes: number | undefined) { return resetsAt ? new Date(resetsAt).toLocaleString("zh-CN", windowMinutes === 300 ? { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" } : { month: "numeric", day: "numeric" }) : "—"; }
+function CodexQuotaCard({ usage }: { usage: CodexUsageState }) {
+  const data = usage.data;
+  const windows = data ? sortCodexUsageWindows(data.windows) : [];
+  const primary = windows[0] ?? null;
+  const status = usage.status === "ready" ? data && Date.now() - data.sampledAt > codexUsageStaleAfterMs ? "STALE" : "LIVE" : usage.status === "loading" ? "WAIT" : "OFFLINE";
+  return <article className="codex-quota-card" title="每 60 秒读取本机 Codex app-server 的 5 小时与 1 周额度；不可用时回退到会话及归档记录，不读取或保存令牌。">
+    <span className="micro-label">{status}</span>
+    <div className="quota-card-title"><IoPulseOutline /><b>Codex 额度</b><strong>{primary ? `${primary.remainingPercent}%` : "—"}</strong></div>
+    <div className="quota-card-primary-label">{primary ? `${codexUsageWindowLabel(primary.windowMinutes)}剩余` : "额度不可用"}</div>
+    <div className="meter"><i style={{ width: `${primary?.remainingPercent ?? 0}%` }} /></div>
+    <div className="quota-window-list" aria-label="Codex 额度窗口">{windows.length ? windows.map((window) => <span key={window.windowMinutes}><b>{codexUsageWindowLabel(window.windowMinutes)} {window.remainingPercent}%</b><small>已用 {window.usedPercent}% · 重置 {quotaResetLabel(window.resetsAt, window.windowMinutes)}</small></span>) : <span><b>—</b><small>本机额度记录不可用</small></span>}</div>
+    <small className="quota-sampled"><IoTimerOutline aria-hidden="true" />采样于 {sampledLabel(data?.sampledAt)}</small>
+  </article>;
 }
-function NetworkCard({ metrics, egress, onLaunch }: { metrics: NetworkMetricsState; egress: NetworkEgressViewState; onLaunch: () => void }) {
+function formatNetworkRate(value: number | null | undefined) { if (value === null || value === undefined) return "—"; const units = ["B/s", "KB/s", "MB/s", "GB/s"]; let amount = value; let unit = 0; while (amount >= 1024 && unit < units.length - 1) { amount /= 1024; unit += 1; } return `${amount >= 100 || unit === 0 ? Math.round(amount) : amount.toFixed(1)} ${units[unit]}`; }
+function NetworkCard({ metrics, egress }: { metrics: NetworkMetricsState; egress: NetworkEgressViewState }) {
   const flClashState = metrics.data?.flClash.running ? "FlClash 运行中" : metrics.data?.flClash.launchConfigured ? "FlClash 未运行" : "FlClash 未配置";
   const egressData = egress.data.status === "ready" ? egress.data.data : null;
-  const primaryValue = egressData?.ip ?? (egress.loading ? "查询中…" : egress.data.status === "unconfigured" ? "未配置" : egress.data.status === "unavailable" ? "暂不可用" : "尚未刷新");
-  const detail = egressData
-    ? [egressData.country, egressData.asn].filter(Boolean).join(" · ") || "代理出口已更新"
-    : egress.data.status === "unconfigured" ? "状态监控 → 完成配置"
-      : "状态监控 → 自动更新出口 IP";
-  const flag = countryFlag(egressData?.countryCode);
+  const networkState = metrics.status === "ready" ? "网络已连接" : metrics.status === "loading" ? "正在检测…" : "网络不可用";
+  const networkDetail = metrics.data ? [metrics.data.adapter.name, metrics.data.adapter.localIpv4].filter(Boolean).join(" · ") : "等待本机网络状态";
+  const egressValue = egressData?.ip ?? (egress.loading ? "自动检测中…" : egress.data.status === "unconfigured" ? "代理未配置" : "暂不可用");
 
-  return <button type="button" className="connection-card network-card" onClick={onLaunch} title="点击恢复或启动独立 FlClash 窗口。代理出口 IP 自动更新。">
-    <div className="network-card-heading"><span className="network-card-flag">{flag ?? <IoGlobeOutline aria-hidden="true" />}</span><b>网络检测</b><span className="network-card-flclash">{flClashState}</span></div>
-    <div className="network-card-value"><span>代理出口 IP</span><strong>{primaryValue}</strong></div>
-    <small>{detail}</small>
-  </button>;
+  return <article className="connection-card network-card" aria-label="本机网络状态，仅展示不提供操作">
+    <div className="network-card-heading"><b>网络状态</b><span className="network-card-flclash">{flClashState}</span></div>
+    <div className={`network-card-connection network-card-connection--${metrics.status}`}><strong>{networkState}</strong><small>{networkDetail}</small></div>
+    <div className="network-card-egress"><span>出口 IP</span><strong>{egressValue}</strong></div>
+    <div className="network-card-transfer"><div><span>下载</span><strong>{formatNetworkRate(metrics.data?.downloadBytesPerSecond)}</strong></div><div><span>上传</span><strong>{formatNetworkRate(metrics.data?.uploadBytesPerSecond)}</strong></div></div>
+  </article>;
 }
 
 function RailCard({ children, label, placeholder = false, slot }: { children?: ReactNode; label?: string; placeholder?: boolean; slot: 1 | 2 | 3 | 4 }) {
@@ -669,7 +1122,7 @@ function LibraryPanel({ state, onAdd }: { state: AppState; onAdd: (resource: Omi
 function PlannerPanel({ state, onAdd, onToggle }: { state: AppState; onAdd: (task: Omit<Task, "id" | "createdAt" | "updatedAt">) => void; onToggle: (id: string) => void }) {
   const [title, setTitle] = useState(""); const [dueDate, setDueDate] = useState(today());
   const submit = (event: FormEvent) => { event.preventDefault(); if (!title.trim()) return; onAdd({ title: title.trim(), projectId: null, dueDate: dueDate || today(), status: "active", priority: 3, folderPath: "", completedAt: null }); setTitle(""); };
-  return <RailPage className="planner-page" labels={["任务说明", "添加任务", ...(state.tasks.length ? state.tasks.map((task) => task.title) : ["暂无任务"])]}><div className="reference-intro"><span className="eyebrow">PLAN TASKS</span><h2>计划任务</h2><p>点击任务即可标记完成；数据只保存在当前浏览器。</p></div><form className="reference-form" onSubmit={submit}><Input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="例如：整理文献" /><Input type="date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} /><Button variant="primary" type="submit">加入计划</Button></form>{state.tasks.map((task) => <Button key={task.id} variant="secondary" className={`planner-entry ${task.status === "completed" ? "done" : ""}`} onClick={() => onToggle(task.id)}><IoCheckboxOutline /><span>{task.title}</span><small>{dateLabel(task.dueDate)}</small></Button>)}{!state.tasks.length && <Empty title="计划任务为空" detail="添加一项明确的下一步。" />}</RailPage>;
+  return <RailPage className="planner-page" labels={["任务说明", "添加任务", ...(state.tasks.length ? state.tasks.map((task) => task.title) : ["暂无任务"])]}><div className="reference-intro"><span className="eyebrow">PLAN TASKS</span><h2>计划任务</h2><p>点击任务即可标记完成；数据只保存在当前浏览器。</p></div><form className="reference-form" onSubmit={submit}><Input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="例如：整理文献" /><Input type="date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} /><Button variant="primary" type="submit">加入计划</Button></form>{state.tasks.map((task) => <Button key={task.id} variant="secondary" className={`planner-entry ${task.status === "completed" ? "done" : ""}`} onClick={() => onToggle(task.id)}><TaskCheckbox checked={isCompletedTask(task)} /><span>{task.title}</span><small>{dateLabel(task.dueDate)}</small></Button>)}{!state.tasks.length && <Empty title="计划任务为空" detail="添加一项明确的下一步。" />}</RailPage>;
 }
 
 function AutomationPanel({ running, seconds, onToggle, onReset }: { running: boolean; seconds: number; onToggle: () => void; onReset: () => void }) { return <RailPage className="automation-page" labels={["自动化说明", "计时器"]}><div className="reference-intro"><span className="eyebrow">AUTOMATION TIMER</span><h2>自动化计时</h2><p>这是本地计时器，不会启动或连接 Codex。</p></div><Panel className="timer-panel"><IoTimerOutline /><strong>{formatDuration(seconds)}</strong><span>{running ? "计时中" : "已暂停"}</span><div><Button variant="primary" onClick={onToggle}>{running ? "暂停" : "开始"}</Button><Button variant="secondary" onClick={onReset}>重置</Button></div></Panel></RailPage>; }
@@ -686,12 +1139,12 @@ function MonitorPanel({ metrics, network, egress }: { metrics: SystemMetricsStat
   const data = metrics.data;
   const display = (value: number | null | undefined) => value === null || value === undefined ? "—" : `${value}%`;
   const status = metrics.status === "ready" ? "本地实时监测已连接" : metrics.status === "loading" ? "正在连接本地性能计数器" : "本地性能计数器暂不可用";
-  const detail = metrics.status === "ready" ? "每 2 秒读取 CPU、所有 GPU 引擎峰值、内存占用和物理磁盘活动时间；数据不会离开本机。" : "请通过 pnpm dev 或 pnpm preview 在本机运行 ObsUI；页面不会显示模拟系统数据。";
+  const detail = metrics.status === "ready" ? "每 3 秒读取 CPU、所有 GPU 引擎峰值、内存占用和物理磁盘活动时间；数据不会离开本机。" : "请通过 pnpm dev 或 pnpm preview 在本机运行 ObsUI；页面不会显示模拟系统数据。";
   const networkData = network.data;
   const networkStatus = network.status === "ready" ? "本机网络实时监测已连接" : network.status === "loading" ? "正在读取本机网络适配器" : "本机网络指标暂不可用";
   const egressData = egress.data.data;
-  const egressStatus = egress.data.status === "ready" ? "最近结果" : egress.data.status === "idle" ? "等待自动查询" : egress.data.status === "unconfigured" ? "未配置本机代理或 IPinfo token" : "代理或 IP 查询服务暂不可用";
-  return <RailPage className="monitor-page" labels={["系统概览", "CPU", "GPU", "内存", "磁盘", "监控说明", "网络", "出口 IP"]}><div className="reference-intro"><span className="eyebrow">LOCAL SYSTEM MONITOR</span><h2>状态监控</h2><p>系统指标只在本机读取；出口 IP 通过本机 FlClash 代理自动更新。</p></div><Metric label="CPU" value={display(data?.cpu)} hint="全部逻辑处理器" tone="blue" /><Metric label="GPU" value={display(data?.gpu)} hint="最繁忙 GPU 引擎" tone="gold" /><Metric label="内存" value={display(data?.memory)} hint="已用物理内存" tone="violet" /><Metric label="磁盘" value={display(data?.disk)} hint="物理磁盘活动时间" tone="green" /><Panel className="monitor-note"><IoHardwareChipOutline /><div><b>{status}</b><span>{detail}</span></div></Panel><Panel className="network-monitor"><header><div><span className="eyebrow">NETWORK</span><h2>{networkStatus}</h2></div><Badge tone={network.status === "ready" ? "yellow" : "steel"} className="network-live-state">{network.status === "ready" ? "LIVE" : network.status === "loading" ? "WAIT" : "OFFLINE"}</Badge></header><div className="network-monitor-grid"><Metric label="公网 TCP" value={networkData?.latency.milliseconds === null || networkData?.latency.milliseconds === undefined ? "—" : `${networkData.latency.milliseconds} ms`} hint={`${networkData?.latency.target ?? "1.1.1.1:443"} · 非代理节点延迟`} tone="gold" /><Metric label="下载" value={formatNetworkRate(networkData?.downloadBytesPerSecond)} hint={networkData?.adapter.name ?? "默认路由适配器"} tone="blue" /><Metric label="上传" value={formatNetworkRate(networkData?.uploadBytesPerSecond)} hint={networkData?.adapter.linkSpeed ?? "链路速率不可用"} tone="violet" /><Metric label="局域网 IP" value={networkData?.adapter.localIpv4 ?? "—"} hint={networkData?.flClash.running ? "FlClash 正在运行" : networkData?.flClash.launchConfigured ? "FlClash 可启动" : "FlClash 未配置"} tone="green" /></div></Panel><Panel className="egress-panel"><header><div><span className="eyebrow">PROXY EGRESS</span><h2>出口 IP</h2><p>{egressStatus}</p></div><Button variant="primary" onClick={egress.refresh} disabled={egress.loading || egress.data.status === "unconfigured"}>{egress.loading ? "查询中…" : "刷新出口 IP"}</Button></header>{egressData ? <dl><div><dt>IP</dt><dd>{egressData.ip}</dd></div><div><dt>国家 / 地区</dt><dd>{egressData.countryCode ? `${egressData.country ?? "—"} · ${egressData.countryCode}` : egressData.country ?? "—"}</dd></div><div><dt>ASN</dt><dd>{[egressData.asn, egressData.asName].filter(Boolean).join(" · ") || "—"}</dd></div><div><dt>查询时间</dt><dd>{egress.data.checkedAt ? new Date(egress.data.checkedAt).toLocaleString("zh-CN") : "—"}</dd></div></dl> : <small>缺少配置时不会回退为直连请求。</small>}</Panel></RailPage>;
+  const egressStatus = egress.data.status === "ready" ? "已自动更新" : egress.data.status === "idle" || egress.loading ? "正在自动查询" : egress.data.status === "unconfigured" ? "未配置本机代理" : "代理出口查询暂不可用";
+  return <RailPage className="monitor-page" labels={["系统概览", "CPU", "GPU", "内存", "磁盘", "监控说明", "网络", "出口 IP"]}><div className="reference-intro"><span className="eyebrow">LOCAL SYSTEM MONITOR</span><h2>状态监控</h2><p>系统指标只在本机读取；出口 IP 通过本机 FlClash 代理自动更新。</p></div><Metric label="CPU" value={display(data?.cpu)} hint="全部逻辑处理器" tone="blue" /><Metric label="GPU" value={display(data?.gpu)} hint="最繁忙 GPU 引擎" tone="gold" /><Metric label="内存" value={display(data?.memory)} hint="已用物理内存" tone="violet" /><Metric label="磁盘" value={display(data?.disk)} hint="物理磁盘活动时间" tone="green" /><Panel className="monitor-note"><IoHardwareChipOutline /><div><b>{status}</b><span>{detail}</span></div></Panel><Panel className="network-monitor"><header><div><span className="eyebrow">NETWORK</span><h2>{networkStatus}</h2></div><Badge tone={network.status === "ready" ? "yellow" : "steel"} className="network-live-state">{network.status === "ready" ? "LIVE" : network.status === "loading" ? "WAIT" : "OFFLINE"}</Badge></header><div className="network-monitor-grid"><Metric label="公网 TCP" value={networkData?.latency.milliseconds === null || networkData?.latency.milliseconds === undefined ? "—" : `${networkData.latency.milliseconds} ms`} hint={`${networkData?.latency.target ?? "1.1.1.1:443"} · 非代理节点延迟`} tone="gold" /><Metric label="下载" value={formatNetworkRate(networkData?.downloadBytesPerSecond)} hint={networkData?.adapter.name ?? "默认路由适配器"} tone="blue" /><Metric label="上传" value={formatNetworkRate(networkData?.uploadBytesPerSecond)} hint={networkData?.adapter.linkSpeed ?? "链路速率不可用"} tone="violet" /><Metric label="局域网 IP" value={networkData?.adapter.localIpv4 ?? "—"} hint={networkData?.flClash.running ? "FlClash 正在运行" : networkData?.flClash.launchConfigured ? "FlClash 可启动" : "FlClash 未配置"} tone="green" /></div></Panel><Panel className="egress-panel"><header><div><span className="eyebrow">PROXY EGRESS</span><h2>出口 IP</h2><p>{egressStatus}</p></div></header>{egressData ? <dl><div><dt>IP</dt><dd>{egressData.ip}</dd></div><div><dt>国家 / 地区</dt><dd>{egressData.countryCode ? `${egressData.country ?? "—"} · ${egressData.countryCode}` : egressData.country ?? "—"}</dd></div><div><dt>ASN</dt><dd>{[egressData.asn, egressData.asName].filter(Boolean).join(" · ") || "—"}</dd></div><div><dt>查询时间</dt><dd>{egress.data.checkedAt ? new Date(egress.data.checkedAt).toLocaleString("zh-CN") : "—"}</dd></div></dl> : <small>出口 IP 只会通过已配置的本机回环代理自动检测。</small>}</Panel></RailPage>;
 }
 
 function Overview({ state, dueSoon, openTasks, onView, onToggle }: { state: AppState; dueSoon: Task[]; openTasks: Task[]; onView: (view: View) => void; onToggle: (id: string) => void }) {
@@ -739,7 +1192,8 @@ function Metric({ label, value, hint, tone }: { label: string; value: number | s
 }
 function PanelTitle({ title, action, onClick }: { title: string; action: string; onClick: () => void }) { return <header className="panel-title"><h2>{title}</h2><button onClick={onClick}>{action} →</button></header>; }
 function Empty({ title, detail }: { title: string; detail: string }) { return <div className="empty"><b>{title}</b><span>{detail}</span></div>; }
-function TaskRow({ task, project, onToggle, onRecycle }: { task: Task; project?: Project; onToggle: () => void; onRecycle?: () => void }) { return <div className={`task-row ${task.status}`}><button className="check" onClick={onToggle} aria-label={task.status === "completed" ? "标记未完成" : "标记完成"}>{task.status === "completed" ? "✓" : ""}</button><div className="task-copy"><b>{task.title}</b><small>{project?.title || "未归属项目"} · 截止 {dateLabel(task.dueDate)}</small></div><span className={`priority priority-${task.priority}`}>{priorityLabel[task.priority]}</span>{onRecycle && <button className="icon-button" onClick={onRecycle} aria-label="移入回收站">×</button>}</div>; }
+function TaskCheckbox({ checked }: { checked: boolean }) { return <span className={`task-checkbox${checked ? " is-checked" : ""}`} aria-hidden="true">{checked ? "✓" : ""}</span>; }
+function TaskRow({ task, project, onToggle, onRecycle }: { task: Task; project?: Project; onToggle: () => void; onRecycle?: () => void }) { return <div className={`task-row ${task.status}`}><button type="button" className="check" onClick={onToggle} aria-pressed={task.status === "completed"} aria-label={task.status === "completed" ? "标记未完成" : "标记完成"}>{task.status === "completed" ? "✓" : ""}</button><div className="task-copy"><b>{task.title}</b><small>{project?.title || "未归属项目"} · 截止 {dateLabel(task.dueDate)} {formatDueTime(task.dueTime)}</small></div><span className={`priority priority-${task.priority}`}>{priorityLabel[task.priority]}</span>{onRecycle && <button type="button" className="icon-button" onClick={onRecycle} aria-label="移入回收站">×</button>}</div>; }
 
 function Projects({ state, onAdd, onRecycle }: { state: AppState; onAdd: (project: Omit<Project, "id" | "createdAt" | "updatedAt">) => void; onRecycle: (id: string) => void }) { const [title, setTitle] = useState(""); const [kind, setKind] = useState<ProjectKind>("research"); const [description, setDescription] = useState(""); const submit = (event: FormEvent) => { event.preventDefault(); if (!title.trim()) return; onAdd({ title: title.trim(), kind, status: "active", tags: [], description: description.trim(), }); setTitle(""); setDescription(""); }; return <section className="page"><div className="page-intro"><div><span className="eyebrow">PROJECT REGISTRY</span><p>把课程、科研与个人目标放进可推进的工作空间。</p></div><form className="inline-form" onSubmit={submit}><input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="新项目名称" /><select value={kind} onChange={(event) => setKind(event.target.value as ProjectKind)}><option value="research">科研</option><option value="course">课程</option><option value="personal">个人</option></select><button className="primary" type="submit">+ 创建项目</button></form></div><div className="project-grid">{state.projects.map((project) => <article className="project-card" key={project.id}><div className="card-top"><span className={`type-chip ${project.kind}`}>{kindLabel[project.kind]}</span><button className="icon-button" onClick={() => onRecycle(project.id)} aria-label="项目移入回收站">×</button></div><h2>{project.title}</h2><p>{project.description || "还没有项目说明。"}</p><div className="card-meta"><span>{state.tasks.filter((task) => task.projectId === project.id && task.status !== "completed").length} 个未完成任务</span><span>{state.resources.filter((resource) => resource.projectId === project.id).length} 个资料</span></div><div className="progress"><i style={{ width: `${Math.min(100, Math.max(8, state.tasks.filter((task) => task.projectId === project.id && task.status === "completed").length * 20 + 8))}%` }} /></div></article>)}{!state.projects.length && <Empty title="还没有项目" detail="从上方创建第一个项目。" />}</div></section>; }
 

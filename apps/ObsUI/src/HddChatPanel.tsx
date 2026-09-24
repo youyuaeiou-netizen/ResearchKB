@@ -1,16 +1,17 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { IoAddOutline, IoChatbubbleEllipsesOutline, IoDocumentTextOutline, IoSendOutline, IoSettingsOutline, IoStopCircleOutline, IoTrashOutline } from "react-icons/io5";
-import type { HddModelId, HddReasoningEffort } from "./hdd-models";
+import { hddReasoningEfforts, type HddModelId, type HddModelOption, type HddProviderId, type HddReasoningEffort } from "./hdd-models";
+import type { WorkbenchSettings } from "./workbench-settings";
 
-export { HDD_MODELS, HDD_REASONING_EFFORTS } from "./hdd-models";
+export { HDD_REASONING_EFFORTS } from "./hdd-models";
 export type { HddModelId, HddReasoningEffort } from "./hdd-models";
 
 export type HddCitation = { label: string; path: string };
 export type HddMessage = { id: string; role: "user" | "assistant"; content: string; createdAt: string; citations?: HddCitation[]; stopped?: boolean };
 export type HddConversation = { id: string; title: string; createdAt: string; updatedAt: string; messages: HddMessage[] };
 export type ConversationSummary = Pick<HddConversation, "id" | "title" | "createdAt" | "updatedAt">;
-export type HddStatus = { available: boolean; version: string | null; message: string };
-export type HddGenerationOptions = { contextRoots?: string[]; model?: HddModelId; reasoningEffort?: HddReasoningEffort };
+export type HddStatus = { available: boolean; version: string | null; message: string; provider?: HddProviderId; model?: string; models?: string[]; modelOptions?: HddModelOption[] };
+export type HddGenerationOptions = { contextRoots?: string[]; provider?: HddProviderId; model?: HddModelId; reasoningEffort?: HddReasoningEffort; customInstructions?: string; cliPath?: string; cliArgs?: string; cliPreset?: "opencode" | "generic" };
 
 const now = () => new Date().toISOString();
 
@@ -55,7 +56,7 @@ export type HddChatController = {
   cancelDelete: () => void;
 };
 
-export function useHddChat(): HddChatController {
+export function useHddChat(settings?: WorkbenchSettings["hdd"]): HddChatController {
   const [status, setStatus] = useState<HddStatus | null>(null);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [active, setActive] = useState<HddConversation | null>(null);
@@ -66,6 +67,10 @@ export function useHddChat(): HddChatController {
   const [deleteCandidate, setDeleteCandidate] = useState<ConversationSummary | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
+  const selectedCliProfile = settings?.cliProfiles.find((profile) => profile.id === settings.selectedCliProfileId) ?? settings?.cliProfiles[0] ?? null;
+  const statusUrl = settings?.provider && settings.provider !== "codex"
+    ? "/api/hdd/status?" + new URLSearchParams({ provider: settings.provider, ...(settings.model ? { model: settings.model } : {}), ...(selectedCliProfile?.executablePath ? { cliPath: selectedCliProfile.executablePath } : {}) }).toString()
+    : "/api/hdd/status";
 
   const openConversation = async (id: string) => {
     setLoadingConversation(true);
@@ -91,8 +96,13 @@ export function useHddChat(): HddChatController {
 
   useEffect(() => {
     let disposed = false;
+    const refreshStatus = () => {
+      void jsonRequest<HddStatus>(statusUrl, { headers: {} }).then((nextStatus) => {
+        if (!disposed) setStatus(nextStatus);
+      }).catch(() => undefined);
+    };
     void Promise.all([
-      jsonRequest<HddStatus>("/api/hdd/status", { headers: {} }),
+      jsonRequest<HddStatus>(statusUrl, { headers: {} }),
       jsonRequest<{ conversations: ConversationSummary[] }>("/api/hdd/conversations", { headers: {} }),
     ]).then(async ([nextStatus, list]) => {
       if (disposed) return;
@@ -102,8 +112,9 @@ export function useHddChat(): HddChatController {
     }).catch((cause) => {
       if (!disposed) setError(cause instanceof Error ? cause.message : "H.D.D 本机接口暂不可用。");
     });
-    return () => { disposed = true; abortRef.current?.abort(); };
-  }, []);
+    const refreshTimer = window.setInterval(refreshStatus, 60_000);
+    return () => { disposed = true; window.clearInterval(refreshTimer); abortRef.current?.abort(); };
+  }, [statusUrl]);
 
   useEffect(() => {
     const node = messagesRef.current;
@@ -154,7 +165,7 @@ export function useHddChat(): HddChatController {
     const controller = new AbortController();
     abortRef.current = controller;
     try {
-      const response = await fetch(`/api/hdd/conversations/${conversation.id}/messages`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content, ...(options?.contextRoots ? { contextRoots: options.contextRoots } : {}), ...(options?.model ? { model: options.model } : {}), ...(options?.reasoningEffort ? { reasoningEffort: options.reasoningEffort } : {}) }), signal: controller.signal });
+      const response = await fetch(`/api/hdd/conversations/${conversation.id}/messages`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content, ...(options?.contextRoots ? { contextRoots: options.contextRoots } : {}), ...(options?.provider ? { provider: options.provider } : {}), ...(options?.model ? { model: options.model } : {}), ...(options?.reasoningEffort ? { reasoningEffort: options.reasoningEffort } : {}), ...(options?.customInstructions?.trim() ? { customInstructions: options.customInstructions.trim() } : {}), ...(options?.cliPath ? { cliPath: options.cliPath } : {}), ...(options?.cliArgs ? { cliArgs: options.cliArgs } : {}), ...(options?.cliPreset ? { cliPreset: options.cliPreset } : {}) }), signal: controller.signal });
       if (!response.ok || !response.body) {
         const payload = await response.json().catch(() => ({}));
         throw new Error(typeof payload?.message === "string" ? payload.message : "H.D.D 流式接口不可用。");
@@ -216,12 +227,14 @@ export function useHddChat(): HddChatController {
   return { status, conversations, active, draft, loading, loadingConversation, error, deleteCandidate, messagesRef, lastCitations, setDraft, openConversation, createConversation, sendMessage, stopGeneration: () => abortRef.current?.abort(), requestDelete, deleteConversation, cancelDelete: () => setDeleteCandidate(null) };
 }
 
-export function HddChatPanel({ onOpenSettings }: { onOpenSettings: () => void }) {
-  const chat = useHddChat();
+export function HddChatPanel({ settings, onOpenSettings }: { settings: WorkbenchSettings["hdd"]; onOpenSettings: () => void }) {
+  const chat = useHddChat(settings);
+  const selectedCliProfile = settings.cliProfiles.find((profile) => profile.id === settings.selectedCliProfileId) ?? settings.cliProfiles[0] ?? null;
+  const generationOptions = { provider: settings.provider, model: settings.model, ...(hddReasoningEfforts(settings.provider, settings.model).length ? { reasoningEffort: settings.reasoningEffort } : {}), customInstructions: settings.customInstructions, ...(selectedCliProfile ? { cliPath: selectedCliProfile.executablePath, cliArgs: selectedCliProfile.argsTemplate, cliPreset: selectedCliProfile.preset } : {}) };
   const handleComposerKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
-      void chat.sendMessage();
+      void chat.sendMessage(undefined, generationOptions);
     }
   };
 
@@ -235,7 +248,7 @@ export function HddChatPanel({ onOpenSettings }: { onOpenSettings: () => void })
       <header className="hdd-conversation-header"><div><span className="eyebrow">LOCAL CODEX</span><h2>{chat.active?.title ?? "新会话"}</h2></div><div className="hdd-conversation-actions">{chat.active && <button type="button" className="hdd-icon-button" onClick={() => chat.requestDelete()} aria-label="删除当前会话" title="删除当前会话"><IoTrashOutline /></button>}<div className={`hdd-status ${chat.status?.available ? "ready" : "offline"}`}><i />{chat.status?.available ? "在线" : chat.status ? "离线" : "检查中"}</div></div></header>
       <div className="hdd-messages" ref={chat.messagesRef}>{chat.loadingConversation && <p className="hdd-muted">正在读取会话…</p>}{chat.active?.messages.map((message) => <article className={`hdd-message ${message.role}`} key={message.id}><span className="hdd-message-role">{message.role === "user" ? "你" : "H.D.D"}</span><p>{message.content || (chat.loading ? "正在生成…" : "")}</p>{message.stopped && <small className="hdd-stopped">已停止</small>}</article>)}{!chat.loadingConversation && !chat.active && <div className="hdd-empty"><IoChatbubbleEllipsesOutline /><b>从一个问题开始</b><span>本机 Codex 只读回答，不会联网或修改文件。</span></div>}</div>
       {chat.error && <div className="hdd-error" role="status">{chat.error}</div>}
-      <form className="hdd-composer" onSubmit={(event) => void chat.sendMessage(event)}><textarea value={chat.draft} onChange={(event) => chat.setDraft(event.target.value)} onKeyDown={handleComposerKeyDown} placeholder={chat.status?.available ? "向 H.D.D 提问…" : "Codex CLI 离线时不会伪造回答"} disabled={chat.loading || !chat.status?.available} rows={2} aria-label="向 H.D.D 提问" />{chat.loading ? <button type="button" className="hdd-send stop" onClick={chat.stopGeneration} aria-label="停止生成"><IoStopCircleOutline /></button> : <button type="submit" className="hdd-send" disabled={!chat.draft.trim() || !chat.status?.available} aria-label="发送消息"><IoSendOutline /></button>}</form>
+      <form className="hdd-composer" onSubmit={(event) => void chat.sendMessage(event, generationOptions)}><textarea value={chat.draft} onChange={(event) => chat.setDraft(event.target.value)} onKeyDown={handleComposerKeyDown} placeholder={chat.status?.available ? "向 H.D.D 提问…" : "Codex CLI 离线时不会伪造回答"} disabled={chat.loading || !chat.status?.available} rows={2} aria-label="向 H.D.D 提问" />{chat.loading ? <button type="button" className="hdd-send stop" onClick={chat.stopGeneration} aria-label="停止生成"><IoStopCircleOutline /></button> : <button type="submit" className="hdd-send" disabled={!chat.draft.trim() || !chat.status?.available} aria-label="发送消息"><IoSendOutline /></button>}</form>
     </section>
     <aside className="hdd-sources" aria-label="来源与状态"><header><IoDocumentTextOutline /><div><span className="eyebrow">SOURCES</span><h2>来源</h2></div></header>{chat.lastCitations.length ? <ul>{chat.lastCitations.map((citation) => <li key={citation.path}><b>{citation.label}</b><small>{citation.path}</small></li>)}</ul> : <p className="hdd-muted">回答中的 Source 行会显示在这里。知识镜像仅包含六个知识目录里的 Markdown / TXT。</p>}<div className="hdd-boundary"><b>{chat.status?.version ?? "H.D.D"}</b><span>只读 · 本机保存</span></div></aside>
     {chat.deleteCandidate && <div className="hdd-delete-confirm" role="dialog" aria-modal="true"><b>删除这个会话？</b><span>历史 JSON 将被移除，且无法从 ObsUI 恢复。</span><div><button type="button" className="secondary" onClick={chat.cancelDelete}>取消</button><button type="button" className="danger-button" onClick={() => void chat.deleteConversation()}><IoTrashOutline /> 确认删除</button></div></div>}

@@ -1,16 +1,20 @@
 import type { CodexUsage } from "../codex-usage";
 import type { LocalModelState } from "../local-models";
+import type { LiteratureRuntimeStatus, LiteratureUnifiedItem } from "../literature";
 import type { NetworkEgressState, NetworkMetrics } from "../network-metrics";
 import type { SystemMetrics } from "../system-metrics";
 import type { AppState, Project, Resource, Task } from "../types";
+import type { RepositoryEntry } from "../repositories";
 import type { TargetMutationResult, TargetTaskDraft } from "../target-v1/task-model";
+import type { WorkbenchSettings } from "../workbench-settings";
 
 export type V2TabKey = "target" | "local" | "storage" | "literature" | "hdd";
 export type V2ViewKey = "overview" | "library" | "planner" | "automation" | "monitor" | "settings" | "repository" | "hdd";
 export type V2MetricState<T> = { status: "loading" | "ready" | "unavailable"; data: T | null };
 export type V2EgressState = { loading: boolean; data: NetworkEgressState };
-export type V2LocalModelsState = { loading: boolean; data: LocalModelState };
+export type V2LocalModelsState = { loading: boolean; data: LocalModelState; refresh: () => void };
 export type ProxyLaunchResult = { ok: boolean; message: string };
+export type LocalModelControlAction = "start-service" | "stop-service" | "start-model" | "stop-model";
 
 export type V2NavItem = { id: string; label: string; detail?: string };
 export type V2TabConfig = {
@@ -30,11 +34,23 @@ export type V2BusinessContext = {
   networkMetrics: V2MetricState<NetworkMetrics>;
   networkEgress: V2EgressState;
   localModels: V2LocalModelsState;
+  literatureStartup: {
+    status: "loading" | "ready" | "unavailable";
+    zoteroEnabled: boolean | null;
+    runtime: LiteratureRuntimeStatus | null;
+    items: LiteratureUnifiedItem[] | null;
+  };
   automation: { running: boolean; seconds: number };
+  workbenchSettings?: WorkbenchSettings;
+  hddSettings?: WorkbenchSettings["hdd"];
   actions: {
     addProject: (project: Omit<Project, "id" | "createdAt" | "updatedAt">) => void;
     addResource: (resource: Omit<Resource, "id" | "createdAt">) => void;
     addTask: (task: Omit<Task, "id" | "createdAt" | "updatedAt">) => void;
+    addRepository?: (repository: Omit<RepositoryEntry, "id" | "createdAt" | "updatedAt">) => void;
+    removeRepository?: (id: string) => void;
+    addRepositoryRelation?: (a: string, b: string) => void;
+    removeRepositoryRelation?: (id: string) => void;
     toggleTask: (id: string) => void;
     saveTargetTask: (task: TargetTaskDraft) => TargetMutationResult;
     completeTargetTask: (id: string) => void;
@@ -71,6 +87,7 @@ export const V2_TABS: V2TabConfig[] = [
     summary: "只读取当前 Windows 主机状态，指标和网络信息不会离开本机。",
     nav: [
       { id: "overview", label: "系统总览", detail: "实时摘要" },
+      { id: "models", label: "本地模型", detail: "Ollama / OpenCode" },
       { id: "performance", label: "性能指标", detail: "CPU / GPU / 内存" },
       { id: "network", label: "网络连接", detail: "适配器与 FlClash" },
       { id: "egress", label: "出口 IP", detail: "自动更新" },

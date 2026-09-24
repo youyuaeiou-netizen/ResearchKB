@@ -1,14 +1,18 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
+import { IoAddOutline, IoChevronBackOutline, IoChevronForwardOutline } from "react-icons/io5";
 import type { V2BusinessContext } from "../tab-modal-v2/model";
 import type { Priority, Task } from "../types";
 import { openTargetFolder } from "./folder-api";
 import {
-  buildTargetCalendar,
+  buildTargetCalendarMondayFirst,
+  DEFAULT_DUE_TIME,
   deadlineProgress,
-  findTaskForDate,
   formatDueDate,
+  formatDueTime,
+  isValidTimeKey,
   localDateKey,
   localMonthKey,
+  normalizeDueTime,
   remainingTimeLabel,
   sortTargetTasks,
 } from "./task-model";
@@ -18,6 +22,7 @@ type TargetSection = "current" | "calendar";
 type TaskFormState = {
   id?: string;
   dueDate: string;
+  dueTime: string;
   title: string;
   priority: Priority | 0;
   folderPath: string;
@@ -28,8 +33,8 @@ const priorityValues: Priority[] = [1, 2, 3, 4, 5];
 
 function createTaskForm(dueDate: string, task?: Task): TaskFormState {
   return task
-    ? { id: task.id, dueDate: task.dueDate, title: task.title, priority: task.priority, folderPath: task.folderPath }
-    : { dueDate, title: "", priority: 0, folderPath: "" };
+    ? { id: task.id, dueDate: task.dueDate, dueTime: normalizeDueTime(task.dueTime), title: task.title, priority: task.priority, folderPath: task.folderPath }
+    : { dueDate, dueTime: DEFAULT_DUE_TIME, title: "", priority: 0, folderPath: "" };
 }
 
 export function TargetV1({ context }: { context: V2BusinessContext }) {
@@ -37,6 +42,7 @@ export function TargetV1({ context }: { context: V2BusinessContext }) {
   const nowDate = new Date();
   const [calendarYear, setCalendarYear] = useState(nowDate.getFullYear());
   const [calendarMonth, setCalendarMonth] = useState(nowDate.getMonth());
+  const [selectedDate, setSelectedDate] = useState(() => localDateKey(nowDate));
   const [now, setNow] = useState(nowDate);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [form, setForm] = useState<TaskFormState | null>(null);
@@ -68,6 +74,7 @@ export function TargetV1({ context }: { context: V2BusinessContext }) {
     const [year, month] = date.split("-").map(Number);
     setCalendarYear(year);
     setCalendarMonth(month - 1);
+    setSelectedDate(date);
     setSection("calendar");
     if (task) setForm(createTaskForm(date, task));
   };
@@ -89,6 +96,10 @@ export function TargetV1({ context }: { context: V2BusinessContext }) {
       setMessage("请选择 1～5 星优先级。");
       return;
     }
+    if (!isValidTimeKey(form.dueTime)) {
+      setMessage("请选择有效时间。");
+      return;
+    }
     const result = context.actions.saveTargetTask({ ...form, priority: form.priority });
     if (!result.ok) {
       setMessage(result.message);
@@ -97,6 +108,11 @@ export function TargetV1({ context }: { context: V2BusinessContext }) {
     setMessage("任务已保存到本机。");
     setForm(null);
     setHoverPriority(0);
+  };
+
+  const toggleTargetTask = (id: string) => {
+    setOpenMenuId(null);
+    context.actions.toggleTask(id);
   };
 
   if (!context.ready) {
@@ -123,7 +139,7 @@ export function TargetV1({ context }: { context: V2BusinessContext }) {
             now={now}
             openMenuId={openMenuId}
             onMenuToggle={(id) => setOpenMenuId((current) => current === id ? null : id)}
-            onComplete={context.actions.completeTargetTask}
+            onToggleComplete={toggleTargetTask}
             onCancel={context.actions.cancelTargetTask}
             onOpenFolder={openFolder}
             onOpenCalendar={showCalendar}
@@ -134,7 +150,12 @@ export function TargetV1({ context }: { context: V2BusinessContext }) {
             month={calendarMonth}
             onYearChange={setCalendarYear}
             onMonthChange={setCalendarMonth}
-            onDateClick={(dueDate) => setForm(createTaskForm(dueDate, findTaskForDate(context.state.tasks, dueDate)))}
+            selectedDate={selectedDate}
+            onSelectedDateChange={setSelectedDate}
+            projects={context.state.projects}
+            onDateClick={(dueDate) => setForm(createTaskForm(dueDate))}
+            onTaskClick={(task) => setForm(createTaskForm(task.dueDate, task))}
+            onToggleTask={toggleTargetTask}
           />}
     </div>
 
@@ -155,7 +176,7 @@ function CurrentTargetView({
   now,
   openMenuId,
   onMenuToggle,
-  onComplete,
+  onToggleComplete,
   onCancel,
   onOpenFolder,
   onOpenCalendar,
@@ -165,7 +186,7 @@ function CurrentTargetView({
   now: Date;
   openMenuId: string | null;
   onMenuToggle: (id: string) => void;
-  onComplete: (id: string) => void;
+  onToggleComplete: (id: string) => void;
   onCancel: (id: string) => void;
   onOpenFolder: (task: Task) => void;
   onOpenCalendar: (task?: Task) => void;
@@ -173,24 +194,24 @@ function CurrentTargetView({
   return <div className="target-v1__current-view">
     <section className="target-v1__primary" aria-label="最高优先任务">
       {primaryTask ? <>
-        <header className="target-v1__primary-meta">
-          <div><strong>{formatDueDate(primaryTask.dueDate)}</strong></div>
+        <div className="target-v1__primary-strip">
+          <div className="target-v1__primary-datetime"><strong>{formatDueDate(primaryTask.dueDate)}</strong><small>具体时间 {formatDueTime(primaryTask.dueTime)}</small></div>
           <div className="target-v1__progress"><span><b>{deadlineProgress(primaryTask, now)}%</b></span><i><em style={{ width: `${deadlineProgress(primaryTask, now)}%` }} /></i></div>
           <div className={`target-v1__remaining${remainingTimeLabel(primaryTask, now).startsWith("已逾期") ? " is-overdue" : ""}`}><strong>{remainingTimeLabel(primaryTask, now)}</strong></div>
-          <TaskMenu task={primaryTask} open={openMenuId === primaryTask.id} onToggle={onMenuToggle} onComplete={onComplete} onCancel={onCancel} />
-        </header>
-           <div className="target-v1__primary-body">
+          <div className="target-v1__primary-task">
            <Stars priority={primaryTask.priority} />
            <h2>{primaryTask.title}</h2>
            {primaryTask.folderPath.trim() && <button type="button" className="target-v1__go" onClick={() => onOpenFolder(primaryTask)}>前往</button>}
-         </div>
+          </div>
+          <TaskMenu task={primaryTask} open={openMenuId === primaryTask.id} onToggle={onMenuToggle} onToggleComplete={onToggleComplete} onCancel={onCancel} />
+        </div>
       </> : <EmptyPrimary onCreate={() => onOpenCalendar()} />}
     </section>
 
     <section className="target-v1__other" aria-label="其他任务">
       <header><div><span>其他任务</span></div><button type="button" onClick={() => onOpenCalendar()}>打开月历</button></header>
       {otherTasks.length
-        ? <TaskRail tasks={otherTasks} now={now} openMenuId={openMenuId} onMenuToggle={onMenuToggle} onComplete={onComplete} onCancel={onCancel} onOpenFolder={onOpenFolder} />
+        ? <TaskRail tasks={otherTasks} now={now} openMenuId={openMenuId} onMenuToggle={onMenuToggle} onToggleComplete={onToggleComplete} onCancel={onCancel} onOpenFolder={onOpenFolder} />
         : <div className="target-v1__other-empty"><button type="button" onClick={() => onOpenCalendar()}>选择日期创建</button></div>}
     </section>
   </div>;
@@ -200,12 +221,12 @@ function EmptyPrimary({ onCreate }: { onCreate: () => void }) {
   return <div className="target-v1__primary-empty"><h2>当前没有进行中的目标</h2><button type="button" onClick={onCreate}>前往月历</button></div>;
 }
 
-function TaskRail({ tasks, now, openMenuId, onMenuToggle, onComplete, onCancel, onOpenFolder }: {
+function TaskRail({ tasks, now, openMenuId, onMenuToggle, onToggleComplete, onCancel, onOpenFolder }: {
   tasks: Task[];
   now: Date;
   openMenuId: string | null;
   onMenuToggle: (id: string) => void;
-  onComplete: (id: string) => void;
+  onToggleComplete: (id: string) => void;
   onCancel: (id: string) => void;
   onOpenFolder: (task: Task) => void;
 }) {
@@ -245,7 +266,7 @@ function TaskRail({ tasks, now, openMenuId, onMenuToggle, onComplete, onCancel, 
       }}
     >
       {tasks.map((task) => <article className={`target-v1__task-card${task.status === "completed" ? " is-completed" : ""}`} key={task.id}>
-        <header><div><strong>{formatDueDate(task.dueDate)}</strong></div><TaskMenu task={task} open={openMenuId === task.id} onToggle={onMenuToggle} onComplete={onComplete} onCancel={onCancel} /></header>
+        <header><div><strong>{formatDueDate(task.dueDate)}</strong><small>具体时间 {formatDueTime(task.dueTime)}</small></div><TaskMenu task={task} open={openMenuId === task.id} onToggle={onMenuToggle} onToggleComplete={onToggleComplete} onCancel={onCancel} /></header>
         <h3>{task.title}</h3>
          <div className="target-v1__task-card-status">{task.status === "completed" && <span className="target-v1__complete-mark">✓ 已完成</span>}<Stars priority={task.priority} /></div>
          <p className={remainingTimeLabel(task, now).startsWith("已逾期") ? "is-overdue" : ""}>{remainingTimeLabel(task, now)}</p>
@@ -255,50 +276,114 @@ function TaskRail({ tasks, now, openMenuId, onMenuToggle, onComplete, onCancel, 
   </div>;
 }
 
-function TaskMenu({ task, open, onToggle, onComplete, onCancel }: {
+function TaskMenu({ task, open, onToggle, onToggleComplete, onCancel }: {
   task: Task;
   open: boolean;
   onToggle: (id: string) => void;
-  onComplete: (id: string) => void;
+  onToggleComplete: (id: string) => void;
   onCancel: (id: string) => void;
 }) {
   return <div className="target-v1__menu" onPointerDown={(event) => event.stopPropagation()}>
     <button type="button" className="target-v1__more" aria-label={`${task.title}的操作菜单`} aria-expanded={open} onClick={() => onToggle(task.id)}>···</button>
     {open && <div className="target-v1__menu-popover" role="menu">
-      <button type="button" role="menuitem" disabled={task.status === "completed"} onClick={() => onComplete(task.id)}>已完成</button>
+      <button type="button" role="menuitem" onClick={() => onToggleComplete(task.id)}>{task.status === "completed" ? "标记未完成" : "标记已完成"}</button>
       <button type="button" role="menuitem" onClick={() => onCancel(task.id)}>取消</button>
     </div>}
   </div>;
 }
 
-function CalendarView({ tasks, year, month, onYearChange, onMonthChange, onDateClick }: {
+function CalendarView({ tasks, year, month, onYearChange, onMonthChange, selectedDate, onSelectedDateChange, projects, onDateClick, onTaskClick, onToggleTask }: {
   tasks: Task[];
   year: number;
   month: number;
   onYearChange: (year: number) => void;
   onMonthChange: (month: number) => void;
+  selectedDate: string;
+  onSelectedDateChange: (date: string) => void;
+  projects: V2BusinessContext["state"]["projects"];
   onDateClick: (date: string) => void;
+  onTaskClick: (task: Task) => void;
+  onToggleTask: (id: string) => void;
 }) {
-  const cells = useMemo(() => buildTargetCalendar(year, month), [year, month]);
+  const cells = useMemo(() => buildTargetCalendarMondayFirst(year, month), [year, month]);
   const today = localDateKey(new Date());
-  const currentYear = new Date().getFullYear();
-  const years = Array.from({ length: 17 }, (_, index) => currentYear - 8 + index);
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
+  const tasksByDate = useMemo(() => {
+    const grouped = new Map<string, Task[]>();
+    tasks.filter((task) => Boolean(task.dueDate)).forEach((task) => {
+      const dateTasks = grouped.get(task.dueDate) ?? [];
+      dateTasks.push(task);
+      grouped.set(task.dueDate, dateTasks);
+    });
+    return grouped;
+  }, [tasks]);
+  const selectedTasks = tasksByDate.get(selectedDate) ?? [];
+  const selectedDateLabel = selectedDate.replaceAll("-", ".");
+
+  const changeMonth = (delta: number) => {
+    const next = new Date(year, month + delta, 1);
+    onYearChange(next.getFullYear());
+    onMonthChange(next.getMonth());
+    onSelectedDateChange(localDateKey(next));
+  };
+  const changePickerMonth = (delta: number) => {
+    const next = new Date(year, month + delta, 1);
+    onYearChange(next.getFullYear());
+    onMonthChange(next.getMonth());
+  };
+  const selectDate = (date: string) => {
+    onSelectedDateChange(date);
+  };
+  const chooseDate = (date: string) => {
+    const [nextYear, nextMonth] = date.split("-").map(Number);
+    onYearChange(nextYear);
+    onMonthChange(nextMonth - 1);
+    onSelectedDateChange(date);
+    setDatePickerOpen(false);
+  };
+  const projectLabel = (task: Task) => projects.find((project) => project.id === task.projectId)?.title ?? "目标";
+  const taskSummary = (date: string) => (tasksByDate.get(date) ?? []).map((task) => task.title).join("、");
+
   return <section className="target-v1__calendar" aria-label="月历">
     <header className="target-v1__calendar-toolbar">
-      <div><span>月历</span></div>
-      <label><span>年份</span><select value={year} onChange={(event) => onYearChange(Number(event.target.value))}>{years.map((value) => <option key={value} value={value}>{value} 年</option>)}</select></label>
-      <label><span>月份</span><select value={month} onChange={(event) => onMonthChange(Number(event.target.value))}>{Array.from({ length: 12 }, (_, index) => <option key={index} value={index}>{index + 1} 月</option>)}</select></label>
+      <div className="target-v1__calendar-title"><h2>月度行动日历</h2><span>// OPERATION CALENDAR</span></div>
+      <div className="target-v1__calendar-nav" aria-label="月份导航">
+        <button type="button" onClick={() => changeMonth(-1)} aria-label="上个月"><IoChevronBackOutline aria-hidden="true" /></button>
+        <button type="button" className="target-v1__calendar-month" aria-expanded={datePickerOpen} aria-haspopup="dialog" onClick={() => setDatePickerOpen((open) => !open)} aria-label="选择月份和日期">{year} / {String(month + 1).padStart(2, "0")}</button>
+        <button type="button" onClick={() => changeMonth(1)} aria-label="下个月"><IoChevronForwardOutline aria-hidden="true" /></button>
+        {datePickerOpen && <div className="target-v1__calendar-date-picker" role="dialog" aria-label="选择日期">
+          <header><b>选择日期</b><span>{year} / {String(month + 1).padStart(2, "0")}</span></header>
+          <div className="target-v1__calendar-date-picker-nav"><button type="button" onClick={() => changePickerMonth(-1)} aria-label="上个月"><IoChevronBackOutline aria-hidden="true" /></button><span>{year} / {String(month + 1).padStart(2, "0")}</span><button type="button" onClick={() => changePickerMonth(1)} aria-label="下个月"><IoChevronForwardOutline aria-hidden="true" /></button></div>
+          <div className="target-v1__calendar-date-picker-weekdays">{["一", "二", "三", "四", "五", "六", "日"].map((weekday) => <span key={weekday}>{weekday}</span>)}</div>
+          <div className="target-v1__calendar-date-picker-grid">{cells.map((cell) => <button type="button" key={cell.date} className={`${cell.inMonth ? "" : "is-outside"}${cell.date === selectedDate ? " is-selected" : ""}${cell.date === today ? " is-today" : ""}`} onClick={() => chooseDate(cell.date)}>{cell.day}</button>)}</div>
+        </div>}
+      </div>
     </header>
-    <div className="target-v1__weekdays">{weekdays.map((weekday) => <span key={weekday}>{weekday}</span>)}</div>
-    <div className="target-v1__calendar-grid">
-      {cells.map((cell) => {
-        const task = findTaskForDate(tasks, cell.date);
-        return <button type="button" key={cell.date} className={`${cell.inMonth ? "" : "is-outside"}${cell.date === today ? " is-today" : ""}${task?.status === "completed" ? " is-completed" : ""}`} onClick={() => onDateClick(cell.date)} aria-label={`${cell.date}${task ? `，${task.title}，${task.priority} 星` : "，无任务"}`}>
-          <span>{cell.day}</span>
-          {task && <Stars priority={task.priority} compact />}
-          {task?.status === "completed" && <i>✓</i>}
-        </button>;
-      })}
+    <div className="target-v1__calendar-layout">
+      <section className="target-v1__calendar-main" aria-label="月历网格">
+        <div className="target-v1__calendar-weekday-bar"><div className="target-v1__weekdays">{["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"].map((weekday) => <span key={weekday}>{weekday}</span>)}</div><span>MONTHLY SCHEDULE / LOCAL TIME</span></div>
+        <div className="target-v1__calendar-grid">
+          {cells.map((cell) => {
+            const dateTasks = tasksByDate.get(cell.date) ?? [];
+            return <button type="button" key={cell.date} className={`target-v1__calendar-cell${cell.inMonth ? "" : " is-outside"}${cell.date === today ? " is-today" : ""}${cell.date === selectedDate ? " is-selected" : ""}`} onClick={() => selectDate(cell.date)} aria-label={`${cell.date}${dateTasks.length ? `，${taskSummary(cell.date)}` : "，无任务"}`}>
+              <span className="target-v1__calendar-cell-top"><b>{String(cell.day).padStart(2, "0")}</b>{cell.date === today && <em>TODAY</em>}</span>
+              <span className="target-v1__calendar-cell-tasks">{dateTasks.slice(0, 2).map((task) => <span className={`target-v1__calendar-task-preview priority-${task.priority}${task.status === "completed" ? " is-completed" : ""}`} key={task.id}><i aria-hidden="true" /><span>{task.title}</span></span>)}{dateTasks.length > 2 && <span className="target-v1__calendar-task-more">+{dateTasks.length - 2}</span>}</span>
+            </button>;
+          })}
+        </div>
+      </section>
+      <aside className="target-v1__calendar-detail" aria-label="选中日期详情">
+        <header><span>SELECTED DATE</span><small>DATE DETAIL / ACTIVE</small></header>
+        <strong className="target-v1__calendar-selected-date">{selectedDateLabel}</strong>
+        <div className="target-v1__calendar-accent" aria-hidden="true"><i /><i /><i /><i /></div>
+        <div className="target-v1__calendar-event-count"><b>{selectedTasks.length}</b><span>/ EVENTS</span></div>
+        <div className="target-v1__calendar-events">{selectedTasks.map((task, index) => <article className={`target-v1__calendar-event${task.status === "completed" ? " is-completed" : ""}`} key={task.id}>
+          <button type="button" className="target-v1__calendar-event-main" onClick={() => onTaskClick(task)} aria-label={`编辑${task.title}`}><span className="target-v1__calendar-event-index">{String(index + 1).padStart(2, "0")}</span><span className="target-v1__calendar-event-copy"><b>{formatDueTime(task.dueTime)}</b><strong>{task.title}</strong><small>{projectLabel(task)} / PLAN-{String(index + 1).padStart(3, "0")}</small></span></button>
+          <button type="button" className="target-v1__calendar-event-status" onClick={() => onToggleTask(task.id)}>{task.status === "completed" ? "已完成" : "进行中"}</button>
+        </article>)}</div>
+        {!selectedTasks.length && <div className="target-v1__calendar-empty">当前日期没有安排。</div>}
+        <button type="button" className="target-v1__calendar-add" onClick={() => onDateClick(selectedDate)}><IoAddOutline aria-hidden="true" />ADD SCHEDULE / 新增日程</button>
+      </aside>
     </div>
   </section>;
 }
@@ -316,6 +401,7 @@ function TaskDialog({ form, hoverPriority, onChange, onHoverPriority, onClose, o
     <form className="target-v1__dialog" role="dialog" aria-modal="true" aria-label={form.id ? "修改任务" : "创建任务"} onSubmit={onSubmit}>
       <header><div><span>{form.id ? "修改任务" : "新建任务"}</span></div><button type="button" aria-label="关闭" onClick={onClose}>×</button></header>
       <label><span>日期</span><input type="date" required value={form.dueDate} onChange={(event) => onChange({ ...form, dueDate: event.target.value })} /></label>
+      <label><span>具体时间</span><input aria-label="具体时间" type="time" required value={form.dueTime} onChange={(event) => onChange({ ...form, dueTime: event.target.value })} /></label>
       <label><span>目标名称</span><input required value={form.title} onChange={(event) => onChange({ ...form, title: event.target.value })} placeholder="输入清晰、可执行的目标" /></label>
       <fieldset><legend>1～5 星优先级</legend><div className="target-v1__star-picker" onMouseLeave={() => onHoverPriority(0)}>{priorityValues.map((priority) => <button type="button" key={priority} aria-label={`${priority} 星`} aria-pressed={form.priority === priority} className={priority <= visiblePriority ? "is-filled" : ""} onMouseEnter={() => onHoverPriority(priority)} onFocus={() => onHoverPriority(priority)} onBlur={() => onHoverPriority(0)} onClick={() => onChange({ ...form, priority })}>★</button>)}</div></fieldset>
       <label><span>关联文件夹（可选）</span><input aria-label="关联文件夹（可选）" value={form.folderPath} onChange={(event) => onChange({ ...form, folderPath: event.target.value })} placeholder="可选，例如 F:\\ResearchKB\\projects\\项目名" /></label>

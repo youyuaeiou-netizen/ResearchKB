@@ -1,3 +1,5 @@
+import type { RepositoryEntry, RepositoryRelation } from "./repositories";
+
 export type ProjectKind = "course" | "research" | "personal";
 export type ProjectStatus = "active" | "paused" | "completed";
 export type TaskStatus = "active" | "completed";
@@ -20,6 +22,8 @@ export type Task = {
   title: string;
   projectId: string | null;
   dueDate: string;
+  /** Local wall-clock deadline. Older records may omit it and default to 23:59. */
+  dueTime?: string;
   status: TaskStatus;
   priority: Priority;
   folderPath: string;
@@ -52,6 +56,8 @@ export type AppState = {
   projects: Project[];
   tasks: Task[];
   resources: Resource[];
+  repositories?: RepositoryEntry[];
+  repositoryRelations?: RepositoryRelation[];
   recycleBin: RecycledItem[];
 };
 

@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { HddPageV2 } from "../src/tab-modal-v2/HddPageV2";
 import { TabModalV2 } from "../src/tab-modal-v2/TabModalV2";
 import type { V2BusinessContext } from "../src/tab-modal-v2/model";
+import { DEFAULT_WORKBENCH_SETTINGS } from "../src/workbench-settings";
 
 const mounts: { host: HTMLDivElement; root: Root }[] = [];
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -40,7 +41,10 @@ describe("H.D.D V2 页面", () => {
     };
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = String(input);
-      if (url.endsWith("/status")) return jsonResponse({ available: true, version: "1.0.0", message: "本机 Codex CLI 可用。" });
+      if (url.endsWith("/status")) return jsonResponse({ available: true, version: "1.0.0", message: "本机 Codex CLI 可用。", modelOptions: [
+        { id: "gpt-6-sol", label: "GPT-6-Sol", reasoningEfforts: ["low", "medium", "high", "xhigh", "max", "ultra"], isDefault: true },
+        { id: "gpt-5.6-luna", label: "GPT-5.6-Luna", reasoningEfforts: ["low", "medium", "high", "xhigh", "max"], isDefault: false },
+      ] });
       if (url.endsWith("/conversations")) return jsonResponse({ conversations: [{ id: conversation.id, title: conversation.title, createdAt: conversation.createdAt, updatedAt: conversation.updatedAt }] });
       return jsonResponse(conversation);
     });
@@ -59,6 +63,18 @@ describe("H.D.D V2 页面", () => {
     expect(host.querySelector('button[aria-label="H.D.D 设置"]')).not.toBeNull();
     act(() => host.querySelector<HTMLButtonElement>('button[aria-label="H.D.D 设置"]')?.click());
     expect(host.querySelector('[role="dialog"][aria-label="H.D.D 设置菜单"]')).not.toBeNull();
+    expect(host.querySelector<HTMLSelectElement>('select[aria-label="模型"]')?.value).toBe("gpt-5.6-luna");
+    expect([...host.querySelectorAll<HTMLSelectElement>('select[aria-label="模型"] option')].map((option) => option.textContent)).toEqual(["GPT-6-Sol", "GPT-5.6-Luna"]);
+    expect([...host.querySelectorAll<HTMLSelectElement>('select[aria-label="模型强度"] option')].map((option) => option.textContent)).toEqual(["low", "medium", "high", "xhigh", "max"]);
+    expect(host.querySelector<HTMLSelectElement>('select[aria-label="模型强度"]')?.value).toBe("high");
+    act(() => {
+      const modelSelect = host.querySelector<HTMLSelectElement>('select[aria-label="模型"]')!;
+      modelSelect.value = "gpt-6-sol";
+      modelSelect.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(host.querySelector<HTMLSelectElement>('select[aria-label="模型"]')?.value).toBe("gpt-6-sol");
+    expect([...host.querySelectorAll<HTMLSelectElement>('select[aria-label="模型强度"] option')].map((option) => option.value)).toEqual(["low", "medium", "high", "xhigh", "max", "ultra"]);
+    expect(host.querySelector('.tab-modal-v2__hdd-composer-toolbar')).toBeNull();
     expect(host.querySelector('.tab-modal-v2__hdd-library-settings')).toBeNull();
     expect(host.querySelector('button[aria-label="H.D.D 设置"]')?.getAttribute("aria-expanded")).toBe("true");
     act(() => host.querySelector<HTMLButtonElement>('button[aria-label="关闭设置菜单"]')?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
@@ -83,10 +99,7 @@ describe("H.D.D V2 页面", () => {
     expect(host.querySelector(".tab-modal-v2__hdd-search-overlay")).not.toBeNull();
     act(() => host.querySelector<HTMLButtonElement>('button[aria-label="关闭搜索"]')?.click());
     expect(host.querySelector('[role="dialog"][aria-label="搜索聊天"]')).toBeNull();
-    expect(host.querySelector<HTMLSelectElement>('select[aria-label="模型"]')?.value).toBe("gpt-5.6-luna");
-    expect([...host.querySelectorAll<HTMLSelectElement>('select[aria-label="模型"] option')].map((option) => option.textContent)).toEqual(["5.5", "5.6 Luna", "5.6 Terra", "5.6 Sol"]);
-    expect([...host.querySelectorAll<HTMLSelectElement>('select[aria-label="模型强度"] option')].map((option) => option.textContent)).toEqual(["low", "medium", "high", "xhigh", "max"]);
-    expect(host.querySelector<HTMLSelectElement>('select[aria-label="模型强度"]')?.value).toBe("high");
+    expect(host.querySelector('select[aria-label="模型"]')).toBeNull();
   });
 
   it("does not reserve a central new-session header while no conversation is active", async () => {
@@ -103,6 +116,49 @@ describe("H.D.D V2 页面", () => {
     expect(host.querySelector('.tab-modal-v2__hdd-conversation-header')).toBeNull();
     expect(host.querySelector('h2')).toBeNull();
     expect(host.textContent).not.toContain("新会话");
+  });
+
+  it("shows the selected local Ollama provider and its installed runtime profiles", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.startsWith("/api/hdd/status?")) return jsonResponse({ available: true, version: "0.13.0", message: "本机 Ollama 已就绪。", provider: "ollama", model: "qwen3.5:9b-64k", models: ["qwen3.5:9b-64k", "qwen3.5:9b-128k", "qwen3.5:9b-200k"] });
+      return jsonResponse({ conversations: [] });
+    });
+    const context = {
+      hddSettings: { ...DEFAULT_WORKBENCH_SETTINGS.hdd, provider: "ollama", model: "qwen3.5:9b-64k" },
+      actions: { openSettings: vi.fn() },
+    } as unknown as V2BusinessContext;
+    const host = mount(<HddPageV2 nav="chat" context={context} />);
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)); });
+
+    act(() => host.querySelector<HTMLButtonElement>('button[aria-label="H.D.D 设置"]')?.click());
+    expect(host.textContent).toContain("本地 Ollama");
+    expect([...host.querySelectorAll<HTMLSelectElement>('select[aria-label="模型"] option')].map((option) => option.textContent)).toEqual(["Qwen 3.5 9B · 64K（默认）", "Qwen 3.5 9B · 128K", "Qwen 3.5 9B · 200K（手动）"]);
+    const reasoningSelect = host.querySelector<HTMLSelectElement>('select[aria-label="模型强度"]');
+    expect(reasoningSelect?.disabled).toBe(false);
+    expect([...reasoningSelect!.options].map((option) => option.value)).toEqual(["off", "low", "medium", "high"]);
+    expect(reasoningSelect?.value).toBe("high");
+    expect(host.textContent).toContain("GPT 模型位于 Codex CLI 提供方");
+    act(() => host.querySelector<HTMLButtonElement>(".tab-modal-v2__hdd-settings-provider-link")?.click());
+    expect(context.actions.openSettings).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses an available Codex model when a saved model leaves the live catalog", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      if (String(input).endsWith("/status")) return jsonResponse({ available: true, version: "1.0.0", message: "本机 Codex CLI 已就绪。", modelOptions: [
+        { id: "gpt-6-sol", label: "GPT-6-Sol", reasoningEfforts: ["low", "medium", "high"], isDefault: true },
+      ] });
+      return jsonResponse({ conversations: [] });
+    });
+    const context = {
+      hddSettings: { ...DEFAULT_WORKBENCH_SETTINGS.hdd, model: "gpt-5.5" },
+      actions: { openSettings: vi.fn() },
+    } as unknown as V2BusinessContext;
+    const host = mount(<HddPageV2 nav="chat" context={context} />);
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)); });
+    act(() => host.querySelector<HTMLButtonElement>('button[aria-label="H.D.D 设置"]')?.click());
+    expect(host.querySelector<HTMLSelectElement>('select[aria-label="模型"]')?.value).toBe("gpt-6-sol");
+    expect([...host.querySelectorAll<HTMLSelectElement>('select[aria-label="模型强度"] option')].map((option) => option.value)).toEqual(["low", "medium", "high"]);
   });
 
   it("deletes a conversation from the list after confirmation", async () => {

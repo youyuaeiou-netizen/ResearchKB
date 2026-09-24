@@ -1,0 +1,878 @@
+/*
+ * Shared art direction for the five functional workspaces.
+ *
+ * This file intentionally contains visual properties only. The existing page
+ * components and their layout styles continue to own sizing, spacing,
+ * positioning, overflow and interaction behaviour.
+ */
+
+.obsui-v1-shell {
+  /* Compatibility aliases retained for existing page selectors. */
+  --function-bg: var(--obsui-surface-inset);
+  --function-bg-soft: var(--obsui-surface-shell);
+  --function-panel: var(--obsui-surface-panel);
+  --function-panel-strong: var(--obsui-surface-card);
+  --function-line: var(--obsui-color-border-subtle);
+  --function-line-strong: var(--obsui-color-border-strong);
+  --function-text: var(--obsui-color-content-primary);
+  --function-muted: var(--obsui-color-content-secondary);
+  --function-dim: var(--obsui-color-content-muted);
+  --function-gold: var(--obsui-color-action-primary);
+  --function-gold-soft: rgba(145, 111, 8, .48);
+  --function-orange: var(--obsui-color-state-warning);
+  --function-orange-soft: rgba(167, 67, 22, .38);
+  --function-red: var(--obsui-color-state-danger);
+  --function-lime: var(--obsui-color-state-success);
+  --shell-bg: var(--function-bg-soft);
+  --shell-panel: var(--function-bg);
+  --shell-line: var(--function-line);
+  --shell-text: var(--function-text);
+  --shell-muted: var(--function-muted);
+  --shell-yellow: var(--function-gold);
+  --v2-ink: var(--function-text);
+  --v2-muted: var(--function-muted);
+  --v2-dim: var(--function-dim);
+  --v2-line: var(--function-line);
+  --v2-line-bright: var(--function-line-strong);
+  --v2-yellow: var(--function-gold);
+  --v2-blue: var(--obsui-color-state-info);
+  --v2-green: var(--function-lime);
+  --v2-violet: var(--obsui-color-category-violet);
+  color: var(--function-text);
+  border-color: var(--obsui-color-border-frame);
+  background:
+    var(--obsui-texture-metal),
+    var(--obsui-surface-shell);
+  box-shadow: var(--obsui-shadow-shell), var(--obsui-edge-inset);
+  font-family: var(--obsui-font-ui);
+  -webkit-font-smoothing: antialiased;
+}
+
+.obsui-v1-shell .tab-modal-v2__topbar {
+  border-bottom-color: var(--function-line);
+  background: var(--obsui-surface-frame);
+}
+
+.obsui-v1-shell .tab-modal-v2__brand b {
+  color: var(--function-text);
+  font-weight: 750;
+}
+
+.obsui-v1-shell .tab-modal-v2__brand-mark {
+  border: 1px solid rgba(255, 122, 36, .54);
+  background: rgba(240, 77, 47, .10);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .04);
+}
+
+.obsui-v1-shell .tab-modal-v2__tab-track {
+  border-color: transparent;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.obsui-v1-shell .tab-modal-v2__top-tab {
+  border-color: #0b0b0b;
+  color: #f7f7f5;
+  background: #4b4b4b;
+  box-shadow: inset 0 1px rgba(255, 255, 255, .18), inset 0 -2px rgba(0, 0, 0, .36), 0 1px 2px rgba(0, 0, 0, .34);
+  font-family: "Microsoft YaHei UI", "Segoe UI Variable", "Segoe UI", sans-serif;
+  font-style: normal;
+  font-weight: 900;
+  text-shadow: -1px 0 #111, 0 1px #111, 1px 0 #111, 0 -1px #111, 0 2px 1px rgba(0, 0, 0, .78);
+}
+
+.obsui-v1-shell .tab-modal-v2__top-tab:hover,
+.obsui-v1-shell .tab-modal-v2__top-tab:focus-visible {
+  color: #fff;
+  background: #5b5b5b;
+}
+
+.obsui-v1-shell .tab-modal-v2__top-tab:focus-visible,
+.obsui-v1-shell .tab-modal-v2__close:focus-visible {
+  outline: 2px solid rgba(255, 212, 0, .82);
+  outline-offset: -2px;
+}
+
+.obsui-v1-shell .tab-modal-v2__top-tab.is-selected {
+  border-color: #211b08;
+  color: #16130a;
+  background: #f0c600;
+  box-shadow: inset 0 1px rgba(255, 255, 255, .34), inset 0 -2px rgba(91, 66, 0, .22), 0 1px 2px rgba(0, 0, 0, .34);
+  text-shadow: 0 1px rgba(255, 247, 177, .42);
+}
+
+.obsui-v1-shell .tab-modal-v2__close {
+  border-color: var(--function-line-strong);
+  border-radius: 10px;
+  color: var(--function-text);
+  background: rgba(8, 8, 8, .42);
+}
+
+.obsui-v1-shell .tab-modal-v2__close:hover,
+.obsui-v1-shell .tab-modal-v2__close:focus-visible {
+  border-color: rgba(240, 77, 47, .78);
+  color: #ffb07b;
+  background: rgba(240, 77, 47, .14);
+}
+
+.obsui-v1-shell .tab-modal-v2__content-viewport {
+  border-color: var(--function-line-strong);
+  border-radius: 12px;
+  background:
+    var(--obsui-texture-carbon),
+    var(--obsui-surface-panel);
+  box-shadow: inset 0 1px rgba(255, 255, 255, .04), inset 0 0 0 3px rgba(4, 6, 6, .18);
+}
+
+.obsui-v1-shell :is(
+  .tab-modal-v2__content-viewport--target,
+  .tab-modal-v2__content-viewport--local
+) {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.obsui-v1-shell :is(
+  .tab-modal-v2__content-card,
+  .tab-modal-v2__overview-card,
+  .tab-modal-v2__form-card,
+  .tab-modal-v2__list-panel,
+  .tab-modal-v2__timer-card,
+  .tab-modal-v2__network-hero,
+  .tab-modal-v2__repository-row,
+  .tab-modal-v2__hdd-sessions,
+  .tab-modal-v2__hdd-conversation,
+  .tab-modal-v2__hdd-context-panel,
+  .tab-modal-v2__hdd-library-card,
+  .tab-modal-v2__hdd-status-card
+) {
+  border-color: var(--function-line-strong);
+  border-radius: 12px;
+  background: var(--obsui-surface-card);
+  box-shadow: var(--obsui-edge-bevel), inset 0 0 0 2px rgba(6, 8, 8, .16), var(--obsui-shadow-card);
+}
+
+.obsui-v1-shell .tab-modal-v2__rail-group--plain {
+  border: 1px solid var(--function-line-strong);
+  border-radius: 12px;
+  background: linear-gradient(145deg, rgba(47, 46, 43, .80), rgba(18, 18, 17, .88));
+  box-shadow: inset 0 1px rgba(255, 255, 255, .05), inset 0 0 0 2px rgba(6, 8, 8, .12), 0 12px 28px rgba(0, 0, 0, .12);
+}
+
+.obsui-v1-shell :is(
+  .tab-modal-v2__overview-metric,
+  .tab-modal-v2__device-profile-field,
+  .tab-modal-v2__sensor-choice,
+  .tab-modal-v2__resource-row,
+  .tab-modal-v2__task-row,
+  .tab-modal-v2__local-model-item,
+  .tab-modal-v2__overview-model-row,
+  .tab-modal-v2__hdd-session,
+  .tab-modal-v2__hdd-root-item,
+  .tab-modal-v2__hdd-context-item,
+  .tab-modal-v2__hdd-settings-item
+) {
+  border-color: var(--function-line);
+  border-radius: 9px;
+  background: rgba(10, 10, 9, .50);
+}
+
+.obsui-v1-shell .tab-modal-v2__local-model-overview-card .tab-modal-v2__overview-model-list {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.obsui-v1-shell .tab-modal-v2__local-model-overview-card .tab-modal-v2__overview-model-row {
+  border-radius: 0;
+  border-bottom-color: var(--function-line);
+  background: transparent;
+  box-shadow: none;
+}
+
+.obsui-v1-shell .tab-modal-v2__local-model-overview-card .tab-modal-v2__overview-model-row:last-child {
+  border-bottom-color: transparent;
+}
+
+.obsui-v1-shell .tab-modal-v2__local-model-overview-card .tab-modal-v2__overview-model-row-icon {
+  color: #c1b9a9;
+}
+
+.obsui-v1-shell .tab-modal-v2__local-model-overview-card .tab-modal-v2__model-status {
+  color: var(--function-muted);
+}
+
+/* Keep dense read-only data surfaces on the same plane as their card. */
+.obsui-v1-shell .tab-modal-v2__device-profile-card .tab-modal-v2__device-profile-field {
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.obsui-v1-shell :is(
+  .tab-modal-v2__repository-sidebar,
+  .tab-modal-v2__repository-main,
+  .tab-modal-v2__repository-toolbar,
+  .tab-modal-v2__hdd-composer,
+  .tab-modal-v2__hdd-settings-popover,
+  .tab-modal-v2__hdd-search-dialog,
+  .tab-modal-v2__sensor-dialog,
+  .tab-modal-v2__proxy-settings-popover,
+  .tab-modal-v2__local-model-settings-popover
+) {
+  border-color: var(--function-line-strong);
+  border-radius: 11px;
+  background: var(--obsui-surface-card);
+  box-shadow: 0 20px 52px rgba(0, 0, 0, .42), inset 0 1px rgba(255, 255, 255, .07);
+}
+
+.obsui-v1-shell :is(
+  .tab-modal-v2__repository-sidebar,
+  .tab-modal-v2__repository-main,
+  .tab-modal-v2__repository-toolbar
+) {
+  border-radius: 0;
+}
+
+.obsui-v1-shell :is(
+  .tab-modal-v2__action,
+  .tab-modal-v2__repository-filters button,
+  .tab-modal-v2__repository-row-actions button,
+  .tab-modal-v2__hdd-new-session,
+  .tab-modal-v2__hdd-search-trigger,
+  .tab-modal-v2__hdd-settings-button,
+  .tab-modal-v2__hdd-add-context,
+  .tab-modal-v2__sensor-card-actions button,
+  .tab-modal-v2__sensor-dialog-actions button,
+  .tab-modal-v2__local-model-item-actions button,
+  .tab-modal-v2__local-model-form-actions button
+) {
+  border-color: rgba(218, 225, 222, .40);
+  border-radius: 9px;
+  color: #f4efe4;
+  background: var(--obsui-surface-control);
+  box-shadow: inset 0 1px rgba(255, 255, 255, .06), inset 0 -2px rgba(0, 0, 0, .28);
+  font-weight: 650;
+}
+
+.obsui-v1-shell :is(
+  .tab-modal-v2__action,
+  .tab-modal-v2__repository-filters button,
+  .tab-modal-v2__repository-row-actions button,
+  .tab-modal-v2__hdd-new-session,
+  .tab-modal-v2__hdd-search-trigger,
+  .tab-modal-v2__hdd-settings-button,
+  .tab-modal-v2__hdd-add-context,
+  .tab-modal-v2__sensor-card-actions button,
+  .tab-modal-v2__sensor-dialog-actions button,
+  .tab-modal-v2__local-model-item-actions button,
+  .tab-modal-v2__local-model-form-actions button
+):hover:not(:disabled) {
+  border-color: rgba(255, 212, 0, .70);
+  color: #fff1a8;
+  background: rgba(255, 255, 255, .09);
+}
+
+.obsui-v1-shell .tab-modal-v2__action--primary {
+  border-color: #e4ae00;
+  color: #191815;
+  background: var(--function-gold);
+  box-shadow: none;
+}
+
+.obsui-v1-shell .tab-modal-v2__repository-filters button.is-selected {
+  border-color: rgba(255, 212, 0, .42);
+  color: var(--function-gold);
+  background: linear-gradient(90deg, rgba(145, 111, 8, .82), rgba(145, 111, 8, .46));
+  box-shadow: inset 5px 0 var(--function-gold);
+}
+
+.obsui-v1-shell :is(
+  input,
+  select,
+  textarea,
+  .tab-modal-v2__repository-search,
+  .tab-modal-v2__repository-form,
+  .tab-modal-v2__hdd-session-search,
+  .tab-modal-v2__hdd-search-input,
+  .tab-modal-v2__hdd-composer-input
+) {
+  border-color: rgba(238, 234, 221, .42);
+  border-radius: 9px;
+  color: #f5f0e6;
+  background-color: var(--obsui-surface-control);
+}
+
+.obsui-v1-shell :is(input, select, textarea):focus,
+.obsui-v1-shell :is(input, select, textarea):focus-visible {
+  border-color: var(--function-gold);
+  outline: none;
+  box-shadow: 0 0 0 2px var(--obsui-color-action-primary-soft);
+}
+
+.obsui-v1-shell :is(
+  .tab-modal-v2__content-header,
+  .tab-modal-v2__section-heading,
+  .tab-modal-v2__rail-heading,
+  .tab-modal-v2__repository-sidebar-heading,
+  .tab-modal-v2__hdd-sidebar-header,
+  .tab-modal-v2__hdd-conversation-header,
+  .tab-modal-v2__hdd-context-header
+) {
+  border-color: var(--function-line);
+  color: var(--function-text);
+}
+
+.obsui-v1-shell :is(.tab-modal-v2__micro-label, .tab-modal-v2__card-code, .tab-modal-v2__repository-note, .tab-modal-v2__hdd-muted) {
+  color: #a69f91;
+}
+
+.obsui-v1-shell :is(.tab-modal-v2__card-label, .tab-modal-v2__overview-card-heading, .tab-modal-v2__repository-row-body b) {
+  color: var(--function-text);
+  font-weight: 700;
+}
+
+/* Target */
+.obsui-v1-shell .target-v1 {
+  --target-bg: var(--obsui-surface-inset);
+  --target-panel: var(--obsui-surface-card);
+  --target-panel-soft: var(--obsui-surface-frame);
+  --target-line: var(--obsui-color-border-strong);
+  --target-muted: var(--obsui-color-content-secondary);
+  --target-text: var(--obsui-color-content-primary);
+  --target-yellow: var(--function-gold);
+  color: var(--function-text);
+  font-family: inherit;
+}
+
+.obsui-v1-shell .target-v1__sidebar {
+  border-color: var(--function-line-strong);
+  border-radius: 12px;
+  background: var(--obsui-surface-frame);
+  box-shadow: inset 0 1px rgba(255, 255, 255, .025);
+}
+
+.obsui-v1-shell .target-v1__section-button {
+  border-radius: 9px;
+  color: #efe9de;
+  font-weight: 650;
+}
+
+.obsui-v1-shell .target-v1__section-button:hover {
+  background: rgba(255, 255, 255, .06);
+}
+
+.obsui-v1-shell .target-v1__section-button.is-active {
+  border-color: rgba(255, 212, 0, .42);
+  color: var(--function-gold);
+  background: linear-gradient(90deg, rgba(145, 111, 8, .82), rgba(145, 111, 8, .46));
+  box-shadow: inset 6px 0 var(--function-gold);
+}
+
+.obsui-v1-shell .target-v1__section-button.is-active strong {
+  color: var(--function-gold);
+  font-weight: 700;
+}
+
+.obsui-v1-shell :is(.target-v1__primary, .target-v1__other, .target-v1__calendar) {
+  border-color: var(--function-line-strong);
+  border-radius: 12px;
+  background: var(--obsui-surface-panel);
+  box-shadow: inset 0 1px rgba(255, 255, 255, .025);
+}
+
+.obsui-v1-shell .target-v1__task-card {
+  border-color: var(--function-line);
+  border-radius: 11px;
+  background: var(--obsui-surface-card);
+  box-shadow: inset 0 1px rgba(255, 255, 255, .025), 0 10px 22px rgba(0, 0, 0, .12);
+}
+
+.obsui-v1-shell .target-v1__task-card.is-completed {
+  background: linear-gradient(145deg, rgba(78, 92, 16, .54), rgba(29, 38, 18, .70));
+}
+
+.obsui-v1-shell :is(.target-v1__more, .target-v1__other > header button) {
+  border-color: rgba(238, 234, 221, .42);
+  border-radius: 9px;
+  color: #f0ebe0;
+  background: rgba(18, 18, 17, .68);
+}
+
+.obsui-v1-shell :is(.target-v1__menu-popover, .target-v1__dialog) {
+  border-color: var(--function-line-strong);
+  border-radius: 11px;
+  background: var(--obsui-surface-frame);
+  box-shadow: 0 20px 52px rgba(0, 0, 0, .36), inset 0 1px rgba(255, 255, 255, .03);
+}
+
+/* Repository */
+.obsui-v1-shell .tab-modal-v2__repository-page {
+  color: var(--function-text);
+  background: transparent;
+  font-family: inherit;
+}
+
+.obsui-v1-shell .tab-modal-v2__repository-sidebar {
+  border-right-color: var(--function-line);
+  background: var(--obsui-surface-frame);
+}
+
+.obsui-v1-shell .tab-modal-v2__repository-main {
+  background: var(--obsui-surface-inset);
+}
+
+.obsui-v1-shell .tab-modal-v2__repository-toolbar {
+  border-bottom-color: var(--function-line);
+  background: var(--obsui-surface-frame);
+}
+
+.obsui-v1-shell .tab-modal-v2__repository-row:hover {
+  border-color: rgba(255, 212, 0, .46);
+  background: linear-gradient(145deg, rgba(65, 58, 28, .78), rgba(28, 27, 23, .84));
+}
+
+/* Literature */
+.obsui-v1-shell .literature-workspace {
+  --literature-bg: var(--obsui-surface-inset);
+  --literature-panel: var(--obsui-surface-card);
+  --literature-sidebar: var(--obsui-surface-frame);
+  --literature-row: var(--obsui-surface-card);
+  --literature-row-alt: var(--obsui-surface-inset);
+  --literature-line: var(--obsui-color-border-subtle);
+  --literature-text: var(--obsui-color-content-primary);
+  --literature-muted: var(--obsui-color-content-secondary);
+  --literature-soft: var(--obsui-color-content-muted);
+  --literature-yellow: var(--function-gold);
+  color: var(--function-text);
+  background: var(--obsui-surface-panel);
+  font-family: inherit;
+}
+
+.obsui-v1-shell .literature-workspace-header {
+  border-bottom-color: var(--function-line);
+  background: var(--obsui-surface-frame);
+}
+
+.obsui-v1-shell :is(.literature-sidebar, .literature-list-panel, .literature-detail-panel) {
+  border-color: var(--function-line);
+  background-color: var(--obsui-surface-inset);
+}
+
+.obsui-v1-shell :is(
+  .literature-icon-button,
+  .literature-toolbar-button,
+  .literature-secondary-action,
+  .literature-reader-secondary,
+  .literature-folder-picker-button
+) {
+  border-color: rgba(238, 234, 221, .46);
+  border-radius: 9px;
+  color: #f4efe4;
+  background: rgba(17, 17, 16, .68);
+}
+
+.obsui-v1-shell .literature-collection {
+  border-radius: 9px;
+  color: #e9e3d7;
+}
+
+.obsui-v1-shell .literature-collection:hover,
+.obsui-v1-shell .literature-collection:focus-visible {
+  background: rgba(255, 255, 255, .06);
+}
+
+.obsui-v1-shell .literature-collection.is-selected {
+  border-color: rgba(255, 212, 0, .40);
+  color: var(--function-gold);
+  background: linear-gradient(90deg, rgba(145, 111, 8, .78), rgba(145, 111, 8, .42));
+  box-shadow: inset 5px 0 var(--function-gold);
+}
+
+.obsui-v1-shell :is(.literature-folder-filter, .literature-search) {
+  border-color: rgba(238, 234, 221, .50);
+  border-radius: 9px;
+  background: rgba(12, 12, 11, .70);
+}
+
+.obsui-v1-shell :is(.literature-folder-filter, .literature-search):focus-within {
+  border-color: var(--function-gold);
+  box-shadow: 0 0 0 2px rgba(255, 212, 0, .18);
+}
+
+.obsui-v1-shell .literature-item-row {
+  border-color: var(--function-line);
+  background: rgba(49, 48, 45, .72);
+}
+
+.obsui-v1-shell .literature-item-row:nth-child(even) {
+  background: rgba(25, 25, 23, .78);
+}
+
+.obsui-v1-shell .literature-item-row:hover,
+.obsui-v1-shell .literature-item-row:focus-visible {
+  background: rgba(255, 255, 255, .07);
+}
+
+.obsui-v1-shell .literature-item-row.is-selected {
+  border-color: rgba(255, 196, 0, .42);
+  background: rgba(111, 88, 22, .34);
+  box-shadow: inset 4px 0 var(--function-gold);
+}
+
+.obsui-v1-shell :is(
+  .literature-detail-section,
+  .literature-extension-fields,
+  .literature-translation-card,
+  .literature-model-output,
+  .literature-dialog,
+  .literature-reader
+) {
+  border-color: var(--function-line-strong);
+  border-radius: 11px;
+  background: var(--obsui-surface-card);
+  box-shadow: inset 0 1px rgba(255, 255, 255, .025);
+}
+
+.obsui-v1-shell :is(.literature-primary-action, .literature-dialog-actions button[type="submit"]) {
+  border-color: #e4ae00;
+  border-radius: 10px;
+  color: #191815;
+  background: var(--function-gold);
+  font-weight: 700;
+}
+
+/* H.D.D */
+.obsui-v1-shell .tab-modal-v2__hdd-workbench {
+  color: var(--function-text);
+  background: transparent;
+  font-family: inherit;
+}
+
+.obsui-v1-shell .tab-modal-v2__hdd-sessions {
+  background: var(--obsui-surface-frame);
+}
+
+.obsui-v1-shell .tab-modal-v2__hdd-session:hover,
+.obsui-v1-shell .tab-modal-v2__hdd-root-item:hover {
+  border-color: rgba(255, 196, 0, .30);
+  background: rgba(255, 255, 255, .06);
+}
+
+.obsui-v1-shell .tab-modal-v2__hdd-session.is-selected,
+.obsui-v1-shell .tab-modal-v2__hdd-root-item.is-selected {
+  border-color: rgba(255, 196, 0, .40);
+  color: var(--function-gold);
+  background: rgba(111, 88, 22, .38);
+  box-shadow: inset 4px 0 var(--function-gold);
+}
+
+.obsui-v1-shell .tab-modal-v2__hdd-message {
+  border-color: var(--function-line);
+  border-radius: 11px;
+  background: var(--obsui-surface-inset);
+}
+
+.obsui-v1-shell .tab-modal-v2__hdd-message.user {
+  border-color: rgba(255, 122, 36, .48);
+  background: var(--function-orange-soft);
+}
+
+.obsui-v1-shell .tab-modal-v2__hdd-composer {
+  border-color: rgba(238, 234, 221, .38);
+  background: var(--obsui-surface-control);
+}
+
+.obsui-v1-shell .tab-modal-v2__hdd-send {
+  box-shadow: 0 8px 20px rgba(238, 124, 55, .24), inset 0 1px rgba(255, 255, 255, .15);
+}
+
+.obsui-v1-shell :is(
+  .tab-modal-v2__sensor-dialog,
+  .tab-modal-v2__proxy-settings-popover,
+  .tab-modal-v2__local-model-settings-popover,
+  .tab-modal-v2__hdd-settings-popover,
+  .tab-modal-v2__hdd-search-dialog
+) :is(header, footer) {
+  border-color: var(--function-line);
+}
+
+/*
+ * Reference-derived color grammar: color is semantic rather than decorative.
+ * Yellow marks primary selection/action, orange marks attention/info, lime
+ * marks completion, and red marks destructive actions. Those colors stay
+ * inside controls, labels, icons, and meters; structural card edges remain neutral
+ * like the reference.
+ */
+.obsui-v1-shell :is(
+  .tab-modal-v2__content-card--blue,
+  .tab-modal-v2__content-card--gold,
+  .tab-modal-v2__content-card--green,
+  .tab-modal-v2__content-card--violet
+) {
+  border-top-color: var(--function-line-strong);
+  box-shadow: inset 0 1px rgba(255, 255, 255, .07), 0 12px 28px rgba(0, 0, 0, .16);
+}
+
+.obsui-v1-shell :is(
+  .target-v1__task-card:not(.is-completed),
+  .target-v1__task-card.is-completed
+) {
+  border-left-color: var(--function-line);
+  box-shadow: inset 0 1px rgba(255, 255, 255, .06), 0 10px 22px rgba(0, 0, 0, .16);
+}
+
+.obsui-v1-shell .tab-modal-v2__repository-filters button.is-selected {
+  border-color: rgba(255, 212, 0, .58);
+  color: #ffe98a;
+  background: rgba(145, 111, 8, .38);
+  box-shadow: inset 5px 0 var(--function-gold);
+}
+
+.obsui-v1-shell .tab-modal-v2__repository-row:hover,
+.obsui-v1-shell .tab-modal-v2__repository-row.is-selected {
+  border-color: rgba(255, 212, 0, .54);
+  box-shadow: inset 3px 0 var(--function-gold), inset 0 1px rgba(255, 255, 255, .05);
+}
+
+.obsui-v1-shell .literature-collection.is-selected,
+.obsui-v1-shell .literature-item-row.is-selected {
+  border-color: rgba(255, 212, 0, .56);
+  color: #ffe98a;
+  background: rgba(145, 111, 8, .34);
+  box-shadow: inset 5px 0 var(--function-gold);
+}
+
+.obsui-v1-shell .tab-modal-v2__hdd-session.is-selected,
+.obsui-v1-shell .tab-modal-v2__hdd-root-item.is-selected {
+  border-color: rgba(255, 212, 0, .54);
+  color: #ffe98a;
+  background: rgba(145, 111, 8, .34);
+  box-shadow: inset 4px 0 var(--function-gold);
+}
+
+.obsui-v1-shell .tab-modal-v2__hdd-message.user {
+  border-color: rgba(255, 122, 36, .54);
+  background: rgba(167, 67, 22, .30);
+  box-shadow: inset 3px 0 var(--function-orange);
+}
+
+.obsui-v1-shell .tab-modal-v2__hdd-send,
+.obsui-v1-shell .tab-modal-v2__hdd-composer-input > .tab-modal-v2__hdd-send {
+  border-color: #e2aa00;
+  color: #171a19;
+  background: #f1bb13;
+  box-shadow: 0 8px 20px rgba(241, 187, 19, .20), inset 0 1px rgba(255, 255, 255, .24);
+}
+
+.obsui-v1-shell .tab-modal-v2__hdd-composer-input > .tab-modal-v2__hdd-send.is-empty:disabled {
+  border-color: rgba(226, 170, 0, .56);
+  color: rgba(255, 225, 132, .82);
+  background: rgba(116, 89, 15, .64);
+  box-shadow: 0 6px 16px rgba(241, 187, 19, .08), inset 0 1px rgba(255, 255, 255, .14);
+}
+
+.obsui-v1-shell .tab-modal-v2__hdd-settings-model {
+  border-color: rgba(238, 234, 221, .24);
+  background: rgba(8, 8, 7, .50);
+}
+
+.obsui-v1-shell .tab-modal-v2__hdd-settings-model-field select {
+  border-color: rgba(255, 212, 0, .38);
+  border-radius: 6px;
+  background: rgba(145, 111, 8, .20);
+  color: #f2ead8;
+}
+
+/* The compact H.D.D layout has its own settings surface outside the shared card set. */
+.obsui-v1-shell :is(
+  .tab-modal-v2__hdd-workbench,
+  .tab-modal-v2__hdd-library-settings,
+  .tab-modal-v2__hdd-messages,
+  .tab-modal-v2__hdd-search-panel
+) {
+  background:
+    var(--obsui-texture-carbon),
+    var(--obsui-surface-panel);
+}
+
+.obsui-v1-shell .tab-modal-v2__hdd-composer {
+  background: var(--obsui-surface-control);
+}
+
+.obsui-v1-shell .tab-modal-v2__hdd-model-control select {
+  border-color: rgba(255, 212, 0, .30);
+  background: rgba(145, 111, 8, .18);
+  color: #f2ead8;
+}
+
+.obsui-v1-shell .tab-modal-v2__hdd-model-control select:focus-visible {
+  border-color: var(--function-gold);
+  box-shadow: 0 0 0 2px rgba(255, 212, 0, .16);
+}
+
+.obsui-v1-shell .tab-modal-v2__hdd-settings-button:hover:not(:disabled),
+.obsui-v1-shell .tab-modal-v2__hdd-settings-button:focus-visible,
+.obsui-v1-shell .tab-modal-v2__hdd-settings-button[aria-pressed="true"] {
+  border-color: rgba(255, 212, 0, .44);
+  background: rgba(145, 111, 8, .22);
+  color: #ffe98a;
+}
+
+/* Literature keeps a flat metal frame around a carbon-black reading area. */
+.obsui-v1-shell .literature-workspace {
+  --literature-surface: var(--obsui-surface-inset);
+  --literature-panel: var(--obsui-surface-card);
+  --literature-sidebar: var(--obsui-surface-frame);
+  --literature-row: rgba(255, 255, 255, .028);
+  --literature-row-alt: rgba(255, 255, 255, .028);
+  --literature-selected: rgba(255, 212, 0, .10);
+  --literature-success: var(--obsui-color-state-success);
+  background: var(--obsui-texture-carbon), var(--literature-surface);
+}
+
+.obsui-v1-shell .literature-workspace-header,
+.obsui-v1-shell .literature-sidebar { background: var(--obsui-surface-frame); }
+.obsui-v1-shell :is(.literature-list-panel, .literature-detail-panel) { background: var(--obsui-surface-inset); }
+.obsui-v1-shell :is(.literature-item-row, .literature-detail-section, .literature-extension-fields, .literature-translation-card, .literature-model-output, .literature-dialog, .literature-reader) { background: var(--obsui-surface-card); }
+.obsui-v1-shell .literature-item-row { background: var(--literature-row); }
+.obsui-v1-shell .literature-item-row:nth-child(even) { background: var(--literature-row-alt); }
+
+.obsui-v1-shell .literature-source-status {
+  border-color: var(--function-line);
+  background: rgba(10, 10, 9, .42);
+}
+
+.obsui-v1-shell .literature-source-status i,
+.obsui-v1-shell .literature-source-status .is-ready {
+  background: var(--literature-success);
+  box-shadow: 0 0 0 3px rgba(184, 217, 0, .12);
+}
+
+.obsui-v1-shell .literature-source-status b,
+.obsui-v1-shell .literature-imported-mark,
+.obsui-v1-shell .is-ready-text {
+  color: var(--literature-success) !important;
+}
+
+.obsui-v1-shell .literature-collection {
+  border-color: transparent;
+  color: var(--function-muted);
+}
+
+.obsui-v1-shell .literature-collection small {
+  color: var(--function-dim);
+}
+
+.obsui-v1-shell .literature-collection:hover,
+.obsui-v1-shell .literature-collection:focus-visible {
+  border-color: transparent;
+  color: var(--function-text);
+  background: rgba(255, 255, 255, .045);
+}
+
+.obsui-v1-shell .literature-item-row.is-selected,
+.obsui-v1-shell .literature-collection.is-selected {
+  border-color: transparent;
+  color: var(--function-text);
+  background: var(--literature-selected);
+  box-shadow: inset 5px 0 var(--function-gold);
+}
+
+.obsui-v1-shell .literature-item-row:hover,
+.obsui-v1-shell .literature-item-row:focus-visible {
+  background: rgba(255, 255, 255, .055);
+}
+
+.obsui-v1-shell .literature-item-row.is-selected .literature-item-title b {
+  color: var(--function-text);
+}
+
+.obsui-v1-shell .literature-item-attachment,
+.obsui-v1-shell .literature-links svg,
+.obsui-v1-shell .literature-detail-boundary svg,
+.obsui-v1-shell .literature-detail-type svg {
+  color: var(--function-muted);
+}
+
+.obsui-v1-shell .literature-extension-fields dd {
+  color: var(--function-text);
+}
+
+/* Literature inspector and discussion use one continuous carbon surface. The
+ * source/list frame remains metallic; only the selected article gets a quiet
+ * inset treatment so the detail cards do not float away from their background. */
+.obsui-v1-shell .literature-detail-panel {
+  background: var(--obsui-texture-carbon), var(--obsui-surface-panel);
+}
+
+.obsui-v1-shell .literature-detail-header {
+  border-bottom-color: var(--function-line);
+  background: var(--obsui-surface-frame);
+}
+
+.obsui-v1-shell .literature-detail-identity {
+  border-bottom-color: var(--function-line);
+}
+
+.obsui-v1-shell .literature-metadata {
+  border-color: var(--function-line);
+  background: rgba(7, 8, 8, .48);
+}
+
+.obsui-v1-shell .literature-metadata > div {
+  background: rgba(37, 38, 36, .40);
+}
+
+.obsui-v1-shell .literature-detail-section {
+  border-color: var(--function-line);
+  border-radius: var(--obsui-radius-sm);
+  background: rgba(12, 13, 13, .42);
+  box-shadow: var(--obsui-edge-bevel), var(--obsui-edge-inset);
+}
+
+.obsui-v1-shell .literature-extension-fields {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.obsui-v1-shell .literature-discussion-panel {
+  border-left-color: var(--function-line-strong);
+  background: var(--obsui-texture-carbon), var(--obsui-surface-panel);
+}
+
+.obsui-v1-shell .literature-discussion-panel > header {
+  border-bottom-color: var(--function-line);
+  background: var(--obsui-surface-frame);
+}
+
+.obsui-v1-shell .literature-discussion-model-control select {
+  border-color: rgba(255, 212, 0, .48);
+  background: rgba(94, 73, 9, .36);
+}
+
+.obsui-v1-shell .literature-discussion-model-control select:focus-visible {
+  border-color: var(--function-gold);
+  box-shadow: var(--obsui-shadow-focus);
+}
+
+/* Left-accent selection rows stay hard-edged so their state bar meets the
+ * shell geometry instead of terminating in a rounded capsule. */
+.obsui-v1-shell :is(
+  .target-v1__section-button.is-active,
+  .tab-modal-v2__nav-item.is-selected,
+  .tab-modal-v2__repository-filters button.is-selected,
+  .tab-modal-v2__repository-row.is-selected,
+  .literature-collection.is-selected,
+  .literature-item-row.is-selected,
+  .tab-modal-v2__hdd-session.is-selected,
+  .tab-modal-v2__hdd-root-item.is-selected
+) {
+  border-radius: 0;
+}

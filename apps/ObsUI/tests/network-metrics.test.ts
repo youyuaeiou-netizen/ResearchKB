@@ -1,11 +1,18 @@
 import {
   calculateTrafficRates,
+  decodeUtf8Base64,
   parseLoopbackProxyUrl,
   parseNetworkEgressState,
   parseNetworkMetrics,
 } from "../src/network-metrics";
 
 describe("network metric helpers", () => {
+  it("decodes localized adapter names through the ASCII-safe transport", () => {
+    expect(decodeUtf8Base64("5Lul5aSq572R")).toBe("以太网");
+    expect(decodeUtf8Base64("not-base64")).toBeNull();
+    expect(decodeUtf8Base64("77+977+977+9")).toBeNull();
+  });
+
   it("calculates traffic rates only from a continuous adapter sample", () => {
     expect(calculateTrafficRates(null, { adapterId: 8, receivedBytes: 1200, sentBytes: 500, sampledAt: 3000 })).toBeNull();
     expect(calculateTrafficRates(
