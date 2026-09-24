@@ -1,13 +1,33 @@
 # ObsUI
 
-参考卡帕西思路设计的材料科研 Obsidian 知识库框架。
+ObsUI 是运行在 Windows 本机的科研工作台，将目标日程、文献阅读、知识仓库、AI 对话和设备状态集中在同一个界面。ResearchKB 知识库与自动化也保留在这个仓库中，供工作台使用。
 
-面向材料科研的本地优先、证据可追溯知识库框架。Codex 负责受控采集、候选编译、检索和检查；Obsidian 用于阅读与人工审阅；Zotero 始终是书目、PDF 和引用关系的权威源。
+![ObsUI 的目标月历界面](docs/images/obsui-target-calendar.png)
 
-当前开发版本为 `v0.1.0-dev`。首个自动学习主线是“相图 → 凝固 → 相变”：系统将来源完整的 Curated 内容写入隔离的 `02-Areas/_Codex-Auto/基础学习`，并生成关系图。自动生成不等于人工核验；自动卡永不标记为 `verified`。
+*目标月历实机截图；使用全新浏览器中的示例任务，不含个人文献、网络地址或账号数据。*
+
+## ObsUI 能做什么
+
+- **目标与月历：**管理任务、截止时间和完成状态；在月历中选择日期查看详情，通过“新增日程”创建任务。
+- **文献工作台：**扫描本地 PDF，结合 Zotero 条目整理文献，进行重复检查、阅读和本地模型辅助翻译；写入 Zotero 前由用户确认。
+- **仓库与笔记：**浏览 Git 仓库、素材目录和 Obsidian Vault；查看或编辑 Markdown，并用关系图谱探索仓库、目录及笔记之间的联系。
+- **H.D.D 对话：**在受控知识范围内调用 Codex CLI、本机 Ollama 或受信任的其他 CLI；模型和思考强度按实际能力选择。
+- **本机状态：**显示硬件传感器、网络、天气和 Codex 额度；可选接入 HWiNFO、Zotero、Ollama 等本机程序，缺失数据会标为不可用。
+- **设置与数据：**管理工作台外观、启动应用和本地模型；项目与任务保存在浏览器本地，可导出和导入 JSON。
+
+## 启动 ObsUI
+
+```powershell
+Set-Location apps\ObsUI
+pnpm install --frozen-lockfile
+pnpm dev
+```
+
+打开 `http://127.0.0.1:5173/?ui=tab-v2`。应用源码和配置说明见 [ObsUI 说明](apps/ObsUI/README.md)，跨电脑安装与数据恢复见 [Windows 新电脑迁移指南](docs/migration-windows.md)。HWiNFO、Ollama、Zotero 及本地模型需要在每台电脑上分别安装或配置；仓库不包含这些程序、模型权重和本机凭据。
 
 ## 本仓库包含的内容
 
+- ObsUI 应用源码、测试与界面资源：`apps/ObsUI/`。
 - 知识库目录结构与协作规则：`AGENTS.md`、`00-Ideas` 至 `05-Skills`。
 - 自动化配置、任务脚本、测试和文档：`.harness/`。
 - 知识卡模板与 Schema：`_system/templates`、`_system/schema.md`。
@@ -18,7 +38,7 @@
 
 **换电脑恢复完整工作项目：** 请按 [Windows 新电脑迁移指南](docs/migration-windows.md) 安装依赖、导入 ObsUI 使用数据并配置本机凭据。仅 `git clone` 不会自动恢复浏览器数据库，也不会安装外部软件。
 
-## 克隆后开始
+## ResearchKB 知识库与自动化
 
 ```powershell
 git clone https://github.com/youyuaeiou-netizen/ResearchKB.git
