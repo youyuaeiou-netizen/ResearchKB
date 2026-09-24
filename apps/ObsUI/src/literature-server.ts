@@ -6,7 +6,7 @@ import { createReadStream } from "node:fs";
 import { access, lstat, mkdir, readFile, readdir, realpath, rename, stat, writeFile } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { homedir } from "node:os";
-import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createCanvas } from "@napi-rs/canvas";
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
@@ -1801,6 +1801,7 @@ async function authorizeZotero() {
 }
 
 export function sourceDirectoryPath(sourcePath: string) {
+  if (win32.isAbsolute(sourcePath) && !isAbsolute(sourcePath)) return win32.dirname(sourcePath);
   return dirname(resolve(sourcePath));
 }
 

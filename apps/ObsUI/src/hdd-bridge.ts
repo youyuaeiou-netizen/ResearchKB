@@ -4,7 +4,7 @@ import { access, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "
 import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { homedir, tmpdir } from "node:os";
-import { basename, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, extname, isAbsolute, join, relative, resolve, sep, win32 } from "node:path";
 import { promisify } from "node:util";
 import type { Plugin } from "vite";
 import { getCodexModels, type CodexModel } from "./codex-model-catalog";
@@ -182,7 +182,7 @@ export function parseHddCliPath(value: unknown): string | undefined {
   if (!record || record.cliPath === undefined) return undefined;
   if (typeof record.cliPath !== "string") throw new Error("CLI 路径无效。");
   const path = record.cliPath.trim();
-  if (path.length > 1_024 || !isAbsolute(path) || !/(?:\.exe|\.cmd|\.bat|\.ps1)$/i.test(path)) throw new Error("CLI 路径必须是指向 .exe、.cmd、.bat 或 .ps1 文件的绝对路径。");
+  if (path.length > 1_024 || (!isAbsolute(path) && !win32.isAbsolute(path)) || !/(?:\.exe|\.cmd|\.bat|\.ps1)$/i.test(path)) throw new Error("CLI 路径必须是指向 .exe、.cmd、.bat 或 .ps1 文件的绝对路径。");
   return path;
 }
 
