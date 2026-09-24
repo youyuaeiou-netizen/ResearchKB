@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import startupImageUrl from "../assets/startup/obsui-tv-loading.webp";
-import sharkbooBodyUrl from "../assets/startup/sharkboo-body.webp";
-import sharkbooBlinkUrl from "../assets/startup/sharkboo-body-blink.webp";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import startupBackdropUrl from "../assets/startup/zzz-reference-background.png";
+import startupMarkUrl from "../assets/startup/startup-fragment-emblem.png";
 
 export type StartupSignals = {
   storageReady: boolean;
@@ -19,6 +18,8 @@ type StartupStep = {
   label: string;
   cardIndex: number;
 };
+
+const startupCheckCount = 7;
 
 const isPending = (status: string) => status === "loading" || status === "locating";
 
@@ -46,19 +47,34 @@ export function getStartupStep(signals: StartupSignals): StartupStep {
   return { label: "工作台已就绪", cardIndex: 3 };
 }
 
+function getResolvedStartupChecks(signals: StartupSignals) {
+  return [
+    signals.storageReady,
+    !isPending(signals.weatherStatus),
+    !isPending(signals.systemStatus),
+    !isPending(signals.networkStatus),
+    !signals.localModelsLoading,
+    !isPending(signals.codexStatus),
+    !isPending(signals.companionStatus),
+  ].filter(Boolean).length;
+}
+
 function prefersReducedMotion() {
   return typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
 export function StartupOverlay({ signals, hidden = false }: { signals: StartupSignals; hidden?: boolean }) {
-  const [phase, setPhase] = useState<"booting" | "exiting" | "hidden">("booting");
+  const [phase, setPhase] = useState<"booting" | "ready" | "exiting" | "hidden">("booting");
   const [loadedAssets, setLoadedAssets] = useState(0);
   const startedAtRef = useRef(Date.now());
   const exitingRef = useRef(false);
   const step = useMemo(() => getStartupStep(signals), [signals]);
+  const resolvedChecks = getResolvedStartupChecks(signals);
+  const progress = (resolvedChecks / startupCheckCount) * 100;
+  const progressPercent = Math.round(progress);
   const dataReady = isStartupReady(signals);
-  const assetsReady = loadedAssets >= 3;
-  const markAssetReady = () => setLoadedAssets((count) => Math.min(3, count + 1));
+  const assetsReady = loadedAssets >= 2;
+  const markAssetReady = () => setLoadedAssets((count) => Math.min(2, count + 1));
 
   const beginExit = useCallback(() => {
     if (exitingRef.current) return;
@@ -68,17 +84,18 @@ export function StartupOverlay({ signals, hidden = false }: { signals: StartupSi
   }, []);
 
   useEffect(() => {
-    const timeout = window.setTimeout(beginExit, 25_000);
+    if (phase !== "booting") return;
+    const timeout = window.setTimeout(() => setPhase("ready"), 25_000);
     return () => window.clearTimeout(timeout);
-  }, [beginExit]);
+  }, [phase]);
 
   useEffect(() => {
-    if (!dataReady || !assetsReady) return;
+    if (phase !== "booting" || !dataReady || !assetsReady) return;
     const minimumVisibleMs = prefersReducedMotion() ? 120 : 1_300;
     const remaining = Math.max(0, minimumVisibleMs - (Date.now() - startedAtRef.current));
-    const timeout = window.setTimeout(beginExit, remaining);
+    const timeout = window.setTimeout(() => setPhase("ready"), remaining);
     return () => window.clearTimeout(timeout);
-  }, [assetsReady, beginExit, dataReady]);
+  }, [assetsReady, dataReady, phase]);
 
   useEffect(() => {
     if (!hidden) return;
@@ -91,16 +108,27 @@ export function StartupOverlay({ signals, hidden = false }: { signals: StartupSi
 
   if (hidden || phase === "hidden") return null;
 
-  return <div className="startup-overlay" data-phase={phase} role="status" aria-live="polite" aria-label={step.label}>
-    <div className="startup-stage" style={{ "--startup-card-index": step.cardIndex } as CSSProperties}>
-      <img className="startup-image" src={startupImageUrl} alt="" onLoad={markAssetReady} onError={markAssetReady} />
-      <div className="startup-sharkboo" aria-hidden="true">
-        <img className="startup-sharkboo-body" src={sharkbooBodyUrl} alt="" onLoad={markAssetReady} onError={markAssetReady} />
-        <img className="startup-sharkboo-blink" src={sharkbooBlinkUrl} alt="" onLoad={markAssetReady} onError={markAssetReady} />
+  return <div className="startup-overlay" data-phase={phase}>
+    <img className="startup-backdrop" src={startupBackdropUrl} alt="" aria-hidden="true" onLoad={markAssetReady} onError={markAssetReady} />
+    <div className="startup-stage">
+      <div className="startup-backdrop-shade" aria-hidden="true" />
+      <div className="startup-screen">
+        <div className="startup-mark" aria-hidden="true">
+          <img className="startup-mark-fragment startup-mark-fragment-a" src={startupMarkUrl} alt="" onLoad={markAssetReady} onError={markAssetReady} />
+          <img className="startup-mark-fragment startup-mark-fragment-b" src={startupMarkUrl} alt="" />
+          <img className="startup-mark-fragment startup-mark-fragment-c" src={startupMarkUrl} alt="" />
+        </div>
+        <div className="startup-progress">
+          <div className="startup-progress-heading">
+            <span className="startup-status" role="status" aria-live="polite">{step.label}</span>
+            <span className="startup-progress-count">{progressPercent}%</span>
+          </div>
+          <div className="startup-progress-track" role="progressbar" aria-label="启动检查进度" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progressPercent}>
+            <i style={{ width: `${progressPercent}%` }} />
+          </div>
+        </div>
+        {phase === "ready" && <button className="startup-enter-button" type="button" onClick={beginExit}>确认进入</button>}
       </div>
-      <span className="startup-card-signal" aria-hidden="true" />
-      <div className="startup-live-status" aria-hidden="true"><i />{step.label}</div>
-      <span className="startup-power-line" aria-hidden="true" />
     </div>
   </div>;
 }
