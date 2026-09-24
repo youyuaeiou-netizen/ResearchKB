@@ -1,4 +1,4 @@
-# ResearchKB
+# ObsUI
 
 参考卡帕西思路设计的材料科研 Obsidian 知识库框架。
 
