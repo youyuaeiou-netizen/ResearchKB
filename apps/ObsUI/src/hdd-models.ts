@@ -19,10 +19,12 @@ export type HddCliProfile = {
   preset: "opencode" | "generic";
 };
 
-export const DEFAULT_OLLAMA_MODEL = "qwen3.5:9b-64k";
+export const DEFAULT_OLLAMA_MODEL = "qwen3:4b";
+export const DEFAULT_OLLAMA_CONTEXT_LENGTH = 8_192;
 export const HDD_MODEL_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,127}$/;
 
 const QWEN_RUNTIME_LABELS: Record<string, string> = {
+  "qwen3:4b": "Qwen 3 4B · 默认",
   "qwen3.5:9b-64k": "Qwen 3.5 9B · 64K（默认）",
   "qwen3.5:9b-128k": "Qwen 3.5 9B · 128K",
   "qwen3.5:9b-200k": "Qwen 3.5 9B · 200K（手动）",
@@ -33,7 +35,7 @@ export function hddRuntimeModelLabel(model: string): string {
 }
 
 export function sortHddRuntimeModels(models: string[]): string[] {
-  const preferred = ["qwen3.5:9b-64k", "qwen3.5:9b-128k", "qwen3.5:9b-200k"];
+  const preferred = ["qwen3:4b", "qwen3.5:9b-64k", "qwen3.5:9b-128k", "qwen3.5:9b-200k"];
   return [...new Set(models)].sort((left, right) => {
     const leftIndex = preferred.indexOf(left);
     const rightIndex = preferred.indexOf(right);

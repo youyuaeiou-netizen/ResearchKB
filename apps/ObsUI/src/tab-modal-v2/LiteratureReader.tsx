@@ -420,7 +420,8 @@ export function LiteratureReader({
 
   useEffect(() => {
     let disposed = false;
-    const controller = new AbortController();
+    let documentLoaded = false;
+    let loadingTask: ReturnType<PdfJsApi["getDocument"]> | null = null;
     setLoading(true);
     setError("");
     setPdf(null);
@@ -434,22 +435,23 @@ export function LiteratureReader({
     setTranslation(null);
     setTranslationSignature("");
     setTranslationError("");
-    fetch(`/api/literature/items/${encodeURIComponent(item.id)}/pdf`, { cache: "no-store", signal: controller.signal })
-      .then(async (response) => {
-        if (!response.ok) {
-          const payload = await response.json().catch(() => null) as { message?: string } | null;
-          throw new Error(payload?.message || `PDF 暂不可用（HTTP ${response.status}）。`);
-        }
-        return response.arrayBuffer();
-      })
-      .then((data) => import("pdfjs-dist").then((api) => {
+    import("pdfjs-dist")
+      .then((api) => {
         if (disposed) return null;
         api.GlobalWorkerOptions.workerSrc = workerUrl;
         setPdfjs(api);
-        return api.getDocument({ data }).promise;
-      }))
+        loadingTask = api.getDocument({
+          url: `/api/literature/items/${encodeURIComponent(item.id)}/pdf`,
+          rangeChunkSize: 64 * 1024,
+          disableRange: false,
+          disableStream: true,
+          disableAutoFetch: true,
+        });
+        return loadingTask.promise;
+      })
       .then((loadedDocument) => {
         if (!loadedDocument) return;
+        documentLoaded = true;
         if (disposed) {
           void loadedDocument.destroy();
           return;
@@ -458,7 +460,10 @@ export function LiteratureReader({
       })
       .catch((reason) => { if (!disposed) setError(displayError(reason, "PDF 无法打开。")); })
       .finally(() => { if (!disposed) setLoading(false); });
-    return () => { disposed = true; controller.abort(); };
+    return () => {
+      disposed = true;
+      if (!documentLoaded) void loadingTask?.destroy();
+    };
   }, [item.id]);
 
   useEffect(() => {

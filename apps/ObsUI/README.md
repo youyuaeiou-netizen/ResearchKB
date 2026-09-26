@@ -19,10 +19,10 @@ ObsUI 是一个面向所有学生的本地优先工作台，用于管理课程�
 
 ## 开发
 
-要求 Node.js 20+ 与 pnpm：
+要求 Node.js 22.13+ 与 pnpm 11.19.0；按锁文件安装：
 
 ```powershell
-pnpm install
+pnpm install --frozen-lockfile
 pnpm dev
 ```
 
@@ -71,6 +71,9 @@ Copy-Item .env.example .env.local
 
 `.env.local` 已被 Git 忽略，且所有字段都由 Vite 本机服务读取：
 
+- `OBSUI_WORKSPACE_ROOT`：可选的 ResearchKB 根目录；默认使用当前仓库根目录；
+- `OBSUI_LITERATURE_DATABASE_ROOT`：可选的文献和工作台设置目录；未设置时兼容原有 `C:\ObsUILiteratureDB`；迁移电脑时需自行复制旧数据并重新授权 DPAPI 保护的 Zotero 凭据；
+- `OBSUI_OLLAMA_MODEL_ROOT`：可选的本机 Ollama 模型目录；
 - `OBSUI_FLCLASH_PATH`：本机 `FlClash.exe` 的绝对路径；
 - `OBSUI_CLASH_VERGE_PATH`：本机 `clash-verge.exe` 的绝对路径；
 - `OBSUI_FLCLASH_PROXY_URL`：FlClash 的 loopback HTTP 代理地址，例如 `http://127.0.0.1:7890`；仅接受 `127.0.0.1` 或 `::1`；

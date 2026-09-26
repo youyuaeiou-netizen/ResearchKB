@@ -421,6 +421,21 @@
   gap: 16px;
 }
 
+.tab-modal-v2__local-overview > .tab-modal-v2__list-panel {
+  padding-block: 9px;
+}
+
+.tab-modal-v2__local-overview > .tab-modal-v2__list-panel .tab-modal-v2__section-heading {
+  margin-bottom: 5px;
+}
+
+.tab-modal-v2__local-overview > .tab-modal-v2__list-panel .tab-modal-v2__section-heading > div {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+
 .tab-modal-v2__device-profile-grid {
   min-width: 0;
   display: grid;
@@ -430,9 +445,23 @@
 
 .tab-modal-v2__device-profile-card .tab-modal-v2__device-profile-grid {
   flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: rgba(126, 148, 160, .56) transparent;
+  scrollbar-width: thin;
   align-content: start;
   grid-template-columns: minmax(0, 1fr);
   gap: 0 16px;
+}
+
+.tab-modal-v2__device-profile-card .tab-modal-v2__device-profile-grid::-webkit-scrollbar {
+  width: 5px;
+}
+
+.tab-modal-v2__device-profile-card .tab-modal-v2__device-profile-grid::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(126, 148, 160, .56);
 }
 
 .tab-modal-v2__device-profile-field {
@@ -474,9 +503,7 @@
 
 .tab-modal-v2__device-profile-field-copy b,
 .tab-modal-v2__device-profile-field-copy small {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .tab-modal-v2__device-profile-field-copy b {
@@ -491,6 +518,15 @@
   color: #7c8e98;
   font-size: 9px;
   line-height: 1.2;
+}
+
+.tab-modal-v2__device-profile-card .tab-modal-v2__device-profile-field-copy small {
+  margin-top: 0;
+  overflow: visible;
+  font-size: 9px;
+  line-height: 1.2;
+  text-overflow: clip;
+  white-space: normal;
 }
 
 .tab-modal-v2__device-profile-empty {
@@ -1007,7 +1043,7 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 0;
-  max-height: min(42vh, 320px);
+  max-height: min(18vh, 115px);
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-color: #51616b rgba(7, 12, 16, .28);
@@ -2259,7 +2295,7 @@
 
 .tab-modal-v2__quota-windows {
   display: grid;
-  gap: 12px;
+  gap: 6px;
 }
 
 .tab-modal-v2__quota-window {
@@ -2267,11 +2303,11 @@
 }
 
 .tab-modal-v2__quota-window .tab-modal-v2__quota-line {
-  margin-bottom: 6px;
+  margin-bottom: 3px;
 }
 
 .tab-modal-v2__quota-window .tab-modal-v2__quota-line strong {
-  font-size: 24px;
+  font-size: 18px;
 }
 
 .tab-modal-v2__quota-window .tab-modal-v2__meter {
@@ -2280,7 +2316,7 @@
 
 .tab-modal-v2__quota-window > small {
   display: block;
-  margin-top: 4px;
+  margin-top: 2px;
   color: #697b87;
   font-size: 9px;
 }

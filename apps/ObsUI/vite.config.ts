@@ -10,14 +10,15 @@ import { promisify } from "node:util";
 import { ProxyAgent, fetch as fetchWithProxy } from "undici";
 import { defineConfig, loadEnv, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
-import { DEFAULT_LOCAL_MODEL_SETTINGS, normalizeLocalModelSettings, parseLocalModelSettings, parseLocalModelState, type LocalModelSettings, type LocalModelState } from "./src/local-models";
+import { DEFAULT_LOCAL_MODEL_SETTINGS, normalizeLocalModelSettings, parseLocalModelSettings, parsePersistedLocalModelSettings, parseLocalModelState, type LocalModelSettings, type LocalModelState } from "./src/local-models";
 import { calculateTrafficRates, decodeUtf8Base64, parseLoopbackProxyUrl, type NetworkCounterSample } from "./src/network-metrics";
 import { createHddBridgePlugin, invalidateOllamaProbe } from "./src/hdd-bridge";
 import { parseAutomationMetadata, type CodexAutomationsState } from "./src/codex-automations";
 import { parseOpenMeteoWeather, type WeatherApiState } from "./src/weather";
 import { parseWeatherCoordinates, type WeatherCoordinates } from "./src/weather-location";
 import { createLiteraturePlugin } from "./src/literature-server";
-import { LITERATURE_DATABASE_ROOT } from "./src/literature";
+import { DEFAULT_LOCAL_MODEL, getLiteratureDatabaseRoot } from "./src/literature";
+import { readJsonState, writeJsonState } from "./src/json-state";
 import { createWorkbenchSettingsPlugin } from "./src/workbench-settings-server";
 import { createScreenshotPlugin } from "./src/screenshot-server";
 import { createRepositoryPlugin } from "./src/repository-server";
@@ -41,16 +42,10 @@ const installedPowerShell7 = [
 const powerShell = process.platform === "win32"
   ? configuredPowerShell && !configuredPowerShellIsAlias ? configuredPowerShell : installedPowerShell7 || systemWindowsPowerShell
   : configuredPowerShell || "pwsh.exe";
-// Windows PowerShell is kept as the hidden host for short-lived local telemetry
-// commands. The packaged PowerShell 7 host can flash a console during a cold
-// login even when -WindowStyle Hidden is present; provider and HWiNFO flows
-// continue to use the configured PowerShell 7 executable above.
-const telemetryPowerShell = process.platform === "win32"
-  ? process.env.OBSUI_WINDOWS_POWERSHELL_PATH?.trim() && !/(?:^|[\\/])appdata[\\/]local[\\/]microsoft[\\/]windowsapps[\\/]powershell\.exe$/i.test(process.env.OBSUI_WINDOWS_POWERSHELL_PATH.trim())
-    && !/(?:^|[\\/])windowsapps[\\/]microsoft\.powershell_[^\\/]+[\\/](?:pwsh|powershell)\.exe$/i.test(process.env.OBSUI_WINDOWS_POWERSHELL_PATH.trim())
-    ? process.env.OBSUI_WINDOWS_POWERSHELL_PATH.trim()
-    : systemWindowsPowerShell
-  : powerShell;
+// Use the same resolved real PowerShell host as the other local integrations.
+// Telemetry child processes are hidden by both -WindowStyle Hidden and
+// execFileAsync's windowsHide option.
+const telemetryPowerShell = powerShell;
 function powerShellCommandArgs(script: string, apartment: "MTA" | "STA" = "MTA") {
   return [
     "-NoLogo",
@@ -93,15 +88,16 @@ const ipInfoEndpoint = "https://api.ipinfo.io/lite/me";
 const ipifyEndpoint = "https://api.ipify.org?format=json";
 const weatherLocationEndpoint = "https://ipapi.co/json/";
 const ollamaModelsEndpoint = "http://127.0.0.1:11434/api/tags";
-const ollamaExecutable = process.env.OBSUI_OLLAMA_PATH?.trim() || "ollama.exe";
+const ollamaExecutable = () => process.env.OBSUI_OLLAMA_PATH?.trim() || "ollama.exe";
 const ollamaEndpoint = "http://127.0.0.1:11434";
 const ollamaVersionEndpoint = `${ollamaEndpoint}/api/version`;
-const ollamaModelRoot = "C:\\AIModels";
-const ollamaSelectedModel = "qwen3.5:9b-64k";
-const localModelSettingsPath = join(LITERATURE_DATABASE_ROOT, "local-model-settings.json");
+let ollamaModelRoot = process.env.OBSUI_OLLAMA_MODEL_ROOT?.trim() || "C:\\AIModels";
+const ollamaSelectedModel = DEFAULT_LOCAL_MODEL;
+const localModelSettingsPath = () => join(getLiteratureDatabaseRoot(), "local-model-settings.json");
 const weatherEndpoint = "https://api.open-meteo.com/v1/forecast";
 const weatherCacheTtlMs = 15 * 60_000;
 const weatherLocationCacheTtlMs = 6 * 60 * 60_000;
+const systemMetricsStaleLimitMs = 5 * 60_000;
 const codexHome = process.env.CODEX_HOME?.trim() && isAbsolute(process.env.CODEX_HOME.trim()) ? process.env.CODEX_HOME.trim() : join(homedir(), ".codex");
 const codexAutomationsRoot = join(codexHome, "automations");
 const maxCodexAutomations = 20;
@@ -111,6 +107,20 @@ $cpu = Get-CimInstance Win32_PerfFormattedData_PerfOS_Processor | Where-Object N
 $processors = @(Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue)
 $memory = Get-CimInstance Win32_OperatingSystem
 $disk = Get-CimInstance Win32_PerfFormattedData_PerfDisk_PhysicalDisk | Where-Object Name -eq '_Total' | Select-Object -First 1
+$diskDrives = @(Get-CimInstance Win32_DiskDrive -ErrorAction SilentlyContinue)
+$diskActivities = @(Get-CimInstance Win32_PerfFormattedData_PerfDisk_PhysicalDisk -ErrorAction SilentlyContinue | Where-Object { $_.Name -and $_.Name -ne '_Total' } | ForEach-Object {
+  $match = [regex]::Match([string]$_.Name, '^\\s*(\\d+)(?:\\s|$)')
+  if (-not $match.Success) { return }
+  $index = [int]$match.Groups[1].Value
+  $drive = $diskDrives | Where-Object { [int]$_.Index -eq $index } | Select-Object -First 1
+  $model = if ($drive -and $drive.Model) { ([string]$drive.Model).Trim() } else { "物理磁盘 $index" }
+  [pscustomobject]@{
+    id = "windows:disk-activity:$index"
+    deviceId = "physical-drive:$index"
+    deviceName = $model
+    value = $_.PercentDiskTime
+  }
+})
 $engines = Get-CimInstance Win32_PerfFormattedData_GPUPerformanceCounters_GPUEngine -ErrorAction SilentlyContinue
 $gpuPeak = 0
 if ($engines) {
@@ -126,6 +136,7 @@ $cpuClockValues = @($processors | ForEach-Object { $_.CurrentClockSpeed } | Wher
   gpu = LimitPercent $gpuPeak
   memory = LimitPercent $memoryUsed
   disk = LimitPercent $disk.PercentDiskTime
+  diskActivities = @($diskActivities)
   cpuClock = if ($cpuClockValues.Count -gt 0) { [Math]::Round(($cpuClockValues | Measure-Object -Maximum).Maximum) } else { $null }
   sampledAt = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
 } | ConvertTo-Json -Compress
@@ -239,6 +250,7 @@ $storage = @($diskDrives | ForEach-Object {
   elseif ($type -match '(?i)hard disk|fixed') { $type = 'HDD' }
   [pscustomobject]@{
     model = $model
+    deviceId = if ($null -ne $_.Index) { "physical-drive:$($_.Index)" } else { $null }
     sizeBytes = Read-Bytes $_.Size
     type = $type
     interfaceType = Read-Text $_.InterfaceType 80
@@ -299,23 +311,24 @@ if ($displays.Count -eq 0) {
 const sensorScript = `
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 $payload = [ordered]@{ hardwareMonitor = $null; hwinfo = $false; nvidia = $false; sensors = @() }
+$diskDrives = @(Get-CimInstance Win32_DiskDrive -ErrorAction SilentlyContinue)
 function Get-ObsUiCategory([string]$identifier, [string]$name) {
   $value = ($identifier + ' ' + $name).ToLowerInvariant()
   if ($value -match '/vram/') { return 'gpu' }
   if ($value -match '/gpu-|gpu|nvidia|geforce|radeon') { return 'gpu' }
   if ($value -match '/(intel|amd)?cpu|/cpu/|cpu|ryzen|core.*temperature|tctl|tdie|ccd') { return 'cpu' }
   if ($value -match '/ram/|dimm|dram|memory|内存') { return 'memory' }
-  if ($value -match '/storage/|/hdd/|/ssd/|/nvme/|drive|disk|磁盘|硬盘|存储|remaining\s+(?:life|health)|(?:life|health)\s+remaining') { return 'storage' }
-  if ($value -match '/lpc/|mainboard|motherboard|board|nuvoton|ite |super io|chipset') { return 'motherboard' }
+  if ($value -match '/storage/|/hdd/|/ssd/|/nvme/|drive|disk|磁盘|硬盘|存储|remaining\\s+(?:life|health)|(?:life|health)\\s+remaining') { return 'storage' }
+  if ($value -match '/lpc/|mainboard|motherboard|board|nuvoton|ite |super io|chipset|\\bpch\\b') { return 'motherboard' }
   return 'system'
 }
 function Get-ObsUiRole([string]$category, [string]$kind, [string]$name) {
   $value = $name.ToLowerInvariant()
   if ($category -eq 'cpu' -and $kind -eq 'clock' -and $value -notmatch 'core\\s*#?\\s*\\d|core\\s*\\d|核心\\s*#?\\s*\\d|t\\d+' -and $value -match 'cores?.*average|core average|core max|cpu\\s*(?:clock|frequency|频率)|平均有效频率|有效频率|average\\s+effective') { return 'cpu-clock' }
-  if ($category -eq 'cpu' -and $kind -eq 'voltage' -and $value -match 'vcore|vddcr[_ -]?vdd|cpu.*voltage|voltage.*cpu|cpu.*电压|电压.*cpu|core.*svi.*tfn') { return 'cpu-voltage' }
+  if ($category -eq 'cpu' -and $kind -eq 'voltage' -and $value -notmatch '\\bvid\\b|offset|偏移' -and $value -match 'vcore|vddcr[_ -]?vdd|cpu.*voltage|voltage.*cpu|cpu.*电压|电压.*cpu|core.*svi.*tfn') { return 'cpu-voltage' }
   if ($category -eq 'cpu' -and $kind -eq 'load' -and $value -notmatch 'core\\s*#?\\s*\\d|core\\s*\\d|核心\\s*#?\\s*\\d|t\\d+' -and $value -match 'total|cpu\\s*(?:load|usage|utilization|占用|使用率)|(?:总|全部).*(?:占用|使用率)') { return 'cpu-load' }
   if ($category -eq 'cpu' -and $kind -eq 'power' -and $value -notmatch 'core\\s*#?\\s*\\d|core\\s*\\d|核心\\s*#?\\s*\\d|smu' -and $value -match 'package|cpu\\s*(?:power|功耗)|封装|(?:功耗|power).*cpu') { return 'cpu-power' }
-  if ($category -eq 'cpu' -and $kind -eq 'temperature' -and $value -notmatch 'core\\s*#?\\s*\\d|core\\s*\\d|核心\\s*#?\\s*\\d' -and $value -match 'package|tctl|tdie|core average|core max|cpu|平均') { return 'cpu-temperature' }
+  if ($category -eq 'cpu' -and $kind -eq 'temperature' -and $value -match '^(?:cpu\\s*(?:package|封装|温度)|core\\s*\\(tctl/tdie\\)|tctl/tdie)$') { return 'cpu-temperature' }
   if ($category -eq 'gpu' -and $kind -eq 'clock') { if ($value -match 'memory') { return 'gpu-memory-clock' }; return 'gpu-core-clock' }
   if ($category -eq 'gpu' -and $kind -eq 'power') { return 'gpu-power' }
   if ($category -eq 'gpu' -and $kind -eq 'load') { if ($value -match 'memory|vram') { return 'gpu-memory-load' }; return 'gpu-load' }
@@ -324,16 +337,39 @@ function Get-ObsUiRole([string]$category, [string]$kind, [string]$name) {
   if ($category -eq 'memory' -and $kind -eq 'load') { return 'memory-load' }
   if ($category -eq 'memory' -and $kind -eq 'temperature') { return 'memory-temperature' }
   if ($category -eq 'motherboard' -and $kind -eq 'temperature') { return 'motherboard-temperature' }
-  if ($category -eq 'storage' -and $kind -eq 'load' -and $value -match '^life$|remaining\s+(?:life|health)|(?:life|health)\s+remaining|(?:disk|drive|ssd|nvme|storage).*(?:health|life)|(?:health|life).*(?:disk|drive|ssd|nvme|storage)|(?:磁盘|硬盘|存储).*(?:寿命|健康)|(?:寿命|健康).*(?:磁盘|硬盘|存储)') { return 'storage-health' }
+  if ($category -eq 'storage' -and $kind -eq 'load' -and $value -match 'total.*activity|总活动率|活动率.*总|硬盘活动|磁盘活动|disk.*(?:activity|utilization|load)|(?:activity|utilization).*disk') { return 'disk-load' }
+  if ($category -eq 'storage' -and $kind -eq 'load' -and $value -match '^life$|remaining\\s+(?:life|health)|(?:life|health)\\s+remaining|(?:disk|drive|ssd|nvme|storage).*(?:health|life)|(?:health|life).*(?:disk|drive|ssd|nvme|storage)|(?:磁盘|硬盘|存储).*(?:寿命|健康)|(?:寿命|健康).*(?:磁盘|硬盘|存储)') { return 'storage-health' }
   if ($category -eq 'storage' -and $kind -eq 'temperature') { return 'storage-temperature' }
   return $null
 }
-function Add-ObsUiSensor([string]$id, [string]$label, [string]$category, [string]$kind, $value, [string]$unit, [string]$source, [string]$sourceLabel, [string]$role) {
+function Get-ObsUiDiskIdentity([string]$sensorName, [string]$identifier, [int]$sensorIndex = -1) {
+  $combined = ($sensorName + ' ' + $identifier).Trim()
+  foreach ($drive in $diskDrives) {
+    $model = ([string]$drive.Model).Trim()
+    if ($model.Length -lt 4 -or $combined.IndexOf($model, [StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
+    if ($null -ne $drive.Index) { return [pscustomobject]@{ deviceId = 'physical-drive:' + [string]$drive.Index; deviceName = $model } }
+  }
+  $indexMatch = [regex]::Match($combined, '(?i)(?:physical\\s+drive|disk|drive)\\s*#?\\s*(\\d+)')
+  if ($indexMatch.Success) {
+    $index = [int]$indexMatch.Groups[1].Value
+    $drive = $diskDrives | Where-Object { [int]$_.Index -eq $index } | Select-Object -First 1
+    if ($drive) { return [pscustomobject]@{ deviceId = 'physical-drive:' + [string]$drive.Index; deviceName = ([string]$drive.Model).Trim() } }
+  }
+  if ($sensorIndex -ge 0) {
+    $fallbackName = if (-not [string]::IsNullOrWhiteSpace($sensorName)) { $sensorName.Trim() } else { '物理磁盘组 ' + $sensorIndex }
+    return [pscustomobject]@{ deviceId = 'hwinfo-sensor:' + $sensorIndex; deviceName = $fallbackName }
+  }
+  return $null
+}
+function Add-ObsUiSensor([string]$id, [string]$label, [string]$category, [string]$kind, $value, [string]$unit, [string]$source, [string]$sourceLabel, [string]$role, [string]$deviceId = '', [string]$deviceName = '') {
   try {
     $number = [double]$value
     if ([double]::IsNaN($number) -or [double]::IsInfinity($number) -or $number -lt 0) { return }
     $precision = if ($kind -eq 'voltage') { 2 } else { 1 }
-    $payload.sensors += [pscustomobject]@{ id = $id; label = $label; category = $category; kind = $kind; value = [Math]::Round($number, $precision); unit = $unit; source = $source; sourceLabel = $sourceLabel; role = if ([string]::IsNullOrWhiteSpace($role)) { $null } else { $role } }
+    $sensor = [ordered]@{ id = $id; label = $label; category = $category; kind = $kind; value = [Math]::Round($number, $precision); unit = $unit; source = $source; sourceLabel = $sourceLabel; role = if ([string]::IsNullOrWhiteSpace($role)) { $null } else { $role } }
+    if (-not [string]::IsNullOrWhiteSpace($deviceId)) { $sensor.deviceId = $deviceId }
+    if (-not [string]::IsNullOrWhiteSpace($deviceName)) { $sensor.deviceName = $deviceName }
+    $payload.sensors += [pscustomobject]$sensor
   }
   catch { }
 }
@@ -354,7 +390,9 @@ function Convert-ObsUiHWiNFOValue($value, [string]$kind, [string]$unit) {
     $normalizedUnit = $unit.Trim().ToLowerInvariant()
     if ($kind -eq 'temperature') {
       if ($normalizedUnit -match 'f') { return (($number - 32) * 5 / 9) }
-      if ($normalizedUnit -notmatch 'c') { return $null }
+      # HWiNFO's temperature type is authoritative; on some localized hosts,
+      # the degree symbol or Celsius unit is lost while reading shared memory.
+      return $number
     }
     elseif ($kind -eq 'clock' -and $normalizedUnit -match 'ghz') { return ($number * 1000) }
     elseif ($kind -eq 'load' -and $normalizedUnit -notmatch '%') { return $null }
@@ -449,7 +487,7 @@ function Get-ObsUiLibreHardwareMonitorLabel([string]$identifier, [string]$catego
     if ($label -eq 'Critical Temperature') { return '硬盘温度临界阈值' }
   }
   if ($category -eq 'storage' -and $kind -eq 'load') {
-    if ($label -match '^life$|remaining\s+(?:life|health)|(?:life|health)\s+remaining|(?:disk|drive|ssd|nvme|storage).*(?:health|life)|(?:health|life).*(?:disk|drive|ssd|nvme|storage)|(?:磁盘|硬盘|存储).*(?:寿命|健康)|(?:寿命|健康).*(?:磁盘|硬盘|存储)') { return '磁盘剩余寿命' }
+    if ($label -match '^life$|remaining\\s+(?:life|health)|(?:life|health)\\s+remaining|(?:disk|drive|ssd|nvme|storage).*(?:health|life)|(?:health|life).*(?:disk|drive|ssd|nvme|storage)|(?:磁盘|硬盘|存储).*(?:寿命|健康)|(?:寿命|健康).*(?:磁盘|硬盘|存储)') { return '磁盘剩余寿命' }
     if ($label -eq 'Available Spare') { return '磁盘可用备用' }
     if ($label -eq 'Available Spare Threshold') { return '磁盘备用阈值' }
     if ($label -eq 'Percentage Used') { return '磁盘已用寿命' }
@@ -457,19 +495,20 @@ function Get-ObsUiLibreHardwareMonitorLabel([string]$identifier, [string]$catego
   return $label
 }
 function Start-ObsUiLibreHardwareMonitor {
-  if (@(Get-Process -Name 'LibreHardwareMonitor' -ErrorAction SilentlyContinue).Count -gt 0) { return }
+  if (@(Get-Process -Name 'LibreHardwareMonitor' -ErrorAction SilentlyContinue).Count -gt 0) { return $true }
   # LibreHardwareMonitor requires elevation. Its hidden, triggerless scheduled
   # task is registered during setup, so routine sensor polling never launches
   # the EXE directly and never produces a UAC prompt.
   try {
     $task = Get-ScheduledTask -TaskName 'ObsUI LibreHardwareMonitor' -ErrorAction Stop
     if ($task.State -ne 'Running') { Start-ScheduledTask -TaskName 'ObsUI LibreHardwareMonitor' -ErrorAction Stop }
+    return $true
   }
-  catch { }
+  catch { return $false }
 }
 function Get-ObsUiLibreHardwareMonitorWebRoot {
   try { return Invoke-RestMethod -Uri 'http://127.0.0.1:8085/data.json' -TimeoutSec 1 -ErrorAction Stop } catch { }
-  Start-ObsUiLibreHardwareMonitor
+  if (-not (Start-ObsUiLibreHardwareMonitor)) { return $null }
   foreach ($attempt in 1..4) {
     Start-Sleep -Milliseconds 500
     try { return Invoke-RestMethod -Uri 'http://127.0.0.1:8085/data.json' -TimeoutSec 1 -ErrorAction Stop } catch { }
@@ -507,10 +546,13 @@ public static class ObsUiHwInfoSharedMemory
     private const int HeaderSize = 48;
     private const int MinimumSensorElementSize = 264;
     private const int MinimumReadingElementSize = 316;
+    private const int Utf8SensorElementSize = 392;
+    private const int Utf8ReadingElementSize = 460;
     private const int MaximumElements = 16384;
     private const int MaximumElementSize = 4096;
     private const int MaximumOffset = 32 * 1024 * 1024;
     private static readonly Encoding SharedMemoryEncoding = Encoding.GetEncoding(0);
+    private static readonly Encoding SharedMemoryUtf8Encoding = new UTF8Encoding(false, false);
 
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern IntPtr OpenFileMapping(uint desiredAccess, bool inheritHandle, string name);
@@ -551,6 +593,14 @@ public static class ObsUiHwInfoSharedMemory
         return SharedMemoryEncoding.GetString(bytes, 0, end < 0 ? bytes.Length : end).Trim();
     }
 
+    private static string ReadUtf8String(IntPtr address, long offset, int length)
+    {
+        var bytes = new byte[length];
+        Marshal.Copy(Offset(address, offset), bytes, 0, bytes.Length);
+        var end = Array.IndexOf(bytes, (byte)0);
+        return SharedMemoryUtf8Encoding.GetString(bytes, 0, end < 0 ? bytes.Length : end).Trim();
+    }
+
     private static bool IsValidSection(uint offset, uint elementSize, uint count, int minimumElementSize)
     {
         if (offset < HeaderSize || offset > MaximumOffset || elementSize < minimumElementSize || elementSize > MaximumElementSize || count > MaximumElements) return false;
@@ -574,7 +624,8 @@ public static class ObsUiHwInfoSharedMemory
             if (wait != WaitObject0 && wait != WaitAbandoned) return Array.Empty<ObsUiHwInfoReading>();
             locked = true;
             view = MapViewOfFile(mapping, FileMapRead, 0, 0, UIntPtr.Zero);
-            if (view == IntPtr.Zero || Marshal.ReadByte(view, 0) != (byte)'H' || Marshal.ReadByte(view, 1) != (byte)'W' || Marshal.ReadByte(view, 2) != (byte)'i' || Marshal.ReadByte(view, 3) != (byte)'S') return Array.Empty<ObsUiHwInfoReading>();
+            if (view == IntPtr.Zero) return Array.Empty<ObsUiHwInfoReading>();
+            if (Marshal.ReadByte(view, 0) != (byte)'H' || Marshal.ReadByte(view, 1) != (byte)'W' || Marshal.ReadByte(view, 2) != (byte)'i' || Marshal.ReadByte(view, 3) != (byte)'S') return Array.Empty<ObsUiHwInfoReading>();
 
             var version = ReadUInt32(view, 4);
             var sensorOffset = ReadUInt32(view, 20);
@@ -584,13 +635,15 @@ public static class ObsUiHwInfoSharedMemory
             var readingSize = ReadUInt32(view, 36);
             var readingCount = ReadUInt32(view, 40);
             if (version == 0 || !IsValidSection(sensorOffset, sensorSize, sensorCount, MinimumSensorElementSize) || !IsValidSection(readingOffset, readingSize, readingCount, MinimumReadingElementSize)) return Array.Empty<ObsUiHwInfoReading>();
+            var hasUtf8Strings = version >= 2 && sensorSize >= Utf8SensorElementSize && readingSize >= Utf8ReadingElementSize;
 
             var sensorNames = new string[sensorCount];
             for (var index = 0; index < sensorCount; index++)
             {
                 var baseOffset = (long)sensorOffset + (long)sensorSize * index;
+                var utf8Name = hasUtf8Strings ? ReadUtf8String(view, baseOffset + 264, 128) : String.Empty;
                 var userName = ReadString(view, baseOffset + 136, 128);
-                sensorNames[index] = userName.Length > 0 ? userName : ReadString(view, baseOffset + 8, 128);
+                sensorNames[index] = utf8Name.Length > 0 ? utf8Name : userName.Length > 0 ? userName : ReadString(view, baseOffset + 8, 128);
             }
 
             var readings = new List<ObsUiHwInfoReading>();
@@ -602,16 +655,18 @@ public static class ObsUiHwInfoSharedMemory
                 if (sensorIndex >= sensorNames.Length) continue;
                 var value = ReadDouble(view, baseOffset + 284);
                 if (double.IsNaN(value) || double.IsInfinity(value)) continue;
+                var utf8Label = hasUtf8Strings ? ReadUtf8String(view, baseOffset + 316, 128) : String.Empty;
                 var userLabel = ReadString(view, baseOffset + 140, 128);
-                var label = userLabel.Length > 0 ? userLabel : ReadString(view, baseOffset + 12, 128);
+                var label = utf8Label.Length > 0 ? utf8Label : userLabel.Length > 0 ? userLabel : ReadString(view, baseOffset + 12, 128);
                 if (label.Length == 0) continue;
+                var utf8Unit = hasUtf8Strings ? ReadUtf8String(view, baseOffset + 444, 16) : String.Empty;
                 readings.Add(new ObsUiHwInfoReading {
                     Type = type,
                     SensorIndex = sensorIndex,
                     ReadingId = ReadUInt32(view, baseOffset + 8),
                     Sensor = sensorNames[sensorIndex] ?? String.Empty,
                     Label = label,
-                    Unit = ReadString(view, baseOffset + 268, 16),
+                    Unit = utf8Unit.Length > 0 ? utf8Unit : ReadString(view, baseOffset + 268, 16),
                     Value = value,
                 });
             }
@@ -636,13 +691,17 @@ public static class ObsUiHwInfoSharedMemory
       $value = Convert-ObsUiHWiNFOValue $row.Value $kind $row.Unit
       if ($null -eq $value) { continue }
       $category = Get-ObsUiCategory $row.Sensor $row.Label
-      $role = Get-ObsUiRole $category $kind ($row.Sensor + ' ' + $row.Label)
+      $roleName = if ($category -eq 'cpu' -and $kind -in @('voltage', 'temperature')) { $row.Label } else { $row.Sensor + ' ' + $row.Label }
+      $role = Get-ObsUiRole $category $kind $roleName
+      if ($category -eq 'cpu' -and $kind -eq 'voltage' -and $row.Label -match '(?i)vddq|vdd2|vpp|dimm|dram|memory') { $category = 'memory' }
+      $diskIdentity = if ($category -eq 'storage') { Get-ObsUiDiskIdentity $row.Sensor '' ([int]$row.SensorIndex) } else { $null }
       $unit = switch ($kind) { 'clock' { 'MHz' }; 'voltage' { 'V' }; 'power' { 'W' }; 'load' { '%' }; 'temperature' { '°C' } }
       if ($null -eq $unit) { continue }
-      Add-ObsUiSensor ('hwinfo:' + $row.SensorIndex + ':' + $row.ReadingId) $row.Label $category $kind $value $unit 'hwinfo' 'HWiNFO' $role
+      Add-ObsUiSensor ('hwinfo:' + $row.SensorIndex + ':' + $row.ReadingId) $row.Label $category $kind $value $unit 'hwinfo' 'HWiNFO' $role $diskIdentity.deviceId $diskIdentity.deviceName
     }
   }
-  catch { }
+  catch {
+  }
 }
 
 try {
@@ -663,6 +722,7 @@ try {
       if ([string]::IsNullOrWhiteSpace($rawLabel)) { $rawLabel = $identifier }
       $category = Get-ObsUiCategory $identifier $rawLabel
       $role = Get-ObsUiRole $category $kind $rawLabel
+      $diskIdentity = if ($category -eq 'storage') { Get-ObsUiDiskIdentity $rawLabel $identifier } else { $null }
       # One entry is emitted for each network adapter. The dashboard already has a dedicated network card, so these duplicate adapter counters are not selectable here.
       if ($category -eq 'system' -and ($identifier -match '^/nic/' -or $rawLabel -eq 'Network Utilization')) { continue }
       # On this board the ITE temperature/0 channel follows CPU heat. Temperature/1 is the board sensor used by GamePP.
@@ -679,7 +739,7 @@ try {
         while ($webSensorIds.ContainsKey($sensorId)) { $sensorId = $duplicateBase + ':' + $duplicate; $duplicate += 1 }
       }
       $webSensorIds[$sensorId] = $true
-      Add-ObsUiSensor $sensorId $label $category $kind $value $unit 'hardware-monitor' 'LibreHardwareMonitor' $role
+      Add-ObsUiSensor $sensorId $label $category $kind $value $unit 'hardware-monitor' 'LibreHardwareMonitor' $role $diskIdentity.deviceId $diskIdentity.deviceName
     }
   }
 }
@@ -699,7 +759,8 @@ foreach ($namespace in @('root/LibreHardwareMonitor', 'root/OpenHardwareMonitor'
       $name = [string]$row.Name
       $category = Get-ObsUiCategory $identifier $name
       $role = Get-ObsUiRole $category $kind $name
-      Add-ObsUiSensor ("hardware-monitor:" + $namespace + ':' + $identifier) $name $category $kind $row.Value $unit 'hardware-monitor' $monitorName $role
+      $diskIdentity = if ($category -eq 'storage') { Get-ObsUiDiskIdentity $name $identifier } else { $null }
+      Add-ObsUiSensor ("hardware-monitor:" + $namespace + ':' + $identifier) $name $category $kind $row.Value $unit 'hardware-monitor' $monitorName $role $diskIdentity.deviceId $diskIdentity.deviceName
     }
     break
   }
@@ -713,53 +774,66 @@ if (-not $nvidiaSmi) {
 }
 if ($nvidiaSmi) {
   try {
-    $lines = @(& $nvidiaSmi '--query-gpu=index,clocks.sm,clocks.mem,power.draw,temperature.gpu,utilization.gpu' '--format=csv,noheader,nounits' 2>$null)
+    $lines = @(& $nvidiaSmi '--query-gpu=index,clocks.sm,clocks.mem,power.draw,temperature.gpu,utilization.gpu,memory.used,memory.total' '--format=csv,noheader,nounits' 2>$null)
     foreach ($line in $lines) {
       $values = @([string]$line -split ',' | ForEach-Object { $_.Trim() })
-      if ($values.Count -lt 6) { continue }
+      if ($values.Count -lt 8) { continue }
       $index = $values[0]
       Add-ObsUiSensor ("nvidia:" + $index + ':core-clock') ("GPU " + $index + ' 核心频率') 'gpu' 'clock' $values[1] 'MHz' 'nvidia-smi' 'NVIDIA SMI' 'gpu-core-clock'
       Add-ObsUiSensor ("nvidia:" + $index + ':memory-clock') ("GPU " + $index + ' 显存频率') 'gpu' 'clock' $values[2] 'MHz' 'nvidia-smi' 'NVIDIA SMI' 'gpu-memory-clock'
       Add-ObsUiSensor ("nvidia:" + $index + ':power') ("GPU " + $index + ' 功耗') 'gpu' 'power' $values[3] 'W' 'nvidia-smi' 'NVIDIA SMI' 'gpu-power'
       Add-ObsUiSensor ("nvidia:" + $index + ':temperature') ("GPU " + $index + ' 温度') 'gpu' 'temperature' $values[4] '°C' 'nvidia-smi' 'NVIDIA SMI' 'gpu-temperature'
       Add-ObsUiSensor ("nvidia:" + $index + ':load') ("GPU " + $index + ' 占用') 'gpu' 'load' $values[5] '%' 'nvidia-smi' 'NVIDIA SMI' 'gpu-load'
+      $memoryUsed = 0.0
+      $memoryTotal = 0.0
+      if ([double]::TryParse($values[6], [Globalization.NumberStyles]::Float, [Globalization.CultureInfo]::InvariantCulture, [ref]$memoryUsed) -and [double]::TryParse($values[7], [Globalization.NumberStyles]::Float, [Globalization.CultureInfo]::InvariantCulture, [ref]$memoryTotal) -and $memoryTotal -gt 0 -and $memoryUsed -le $memoryTotal) {
+        Add-ObsUiSensor ("nvidia:" + $index + ':memory-load') ("GPU " + $index + ' 显存占用') 'gpu' 'load' (100 * $memoryUsed / $memoryTotal) '%' 'nvidia-smi' 'NVIDIA SMI' 'gpu-memory-load'
+      }
       $payload.nvidia = $true
     }
   }
   catch { }
 }
 
-if (-not ($payload.sensors | Where-Object role -in @('storage-temperature', 'storage-health'))) {
-  try {
-    $reliabilityCounters = @(Get-PhysicalDisk -ErrorAction Stop | ForEach-Object {
-      try { $_ | Get-StorageReliabilityCounter -ErrorAction Stop } catch { $null }
-    } | Where-Object { $null -ne $_ })
-    if (-not ($payload.sensors | Where-Object role -eq 'storage-temperature')) {
-      $temperatures = @($reliabilityCounters | ForEach-Object { $_.Temperature } | Where-Object { $null -ne $_ })
-      if ($temperatures.Count -gt 0) { Add-ObsUiSensor 'windows:storage-temperature' '存储温度' 'storage' 'temperature' (($temperatures | Measure-Object -Maximum).Maximum) '°C' 'windows' 'Windows 存储' 'storage-temperature' }
+try {
+  foreach ($physicalDisk in @(Get-PhysicalDisk -ErrorAction Stop)) {
+    $reliability = $null
+    try { $reliability = $physicalDisk | Get-StorageReliabilityCounter -ErrorAction Stop } catch { }
+    if (-not $reliability) { continue }
+    $friendlyName = ([string]$physicalDisk.FriendlyName).Trim()
+    $diskIdentity = Get-ObsUiDiskIdentity $friendlyName ([string]$physicalDisk.DeviceId)
+    if (-not $diskIdentity -and [string]$physicalDisk.DeviceId -match '^\\d+$') {
+      $index = [int]$physicalDisk.DeviceId
+      $drive = $diskDrives | Where-Object { [int]$_.Index -eq $index } | Select-Object -First 1
+      if ($drive) { $diskIdentity = [pscustomobject]@{ deviceId = 'physical-drive:' + $index; deviceName = ([string]$drive.Model).Trim() } }
     }
-    if (-not ($payload.sensors | Where-Object role -eq 'storage-health')) {
-      # Windows exposes Wear as the percentage already consumed. Only emit a
-      # remaining-life value when the counter is present and bounded; never
-      # turn a generic Healthy status into a made-up 100% reading.
-      $wearValues = @($reliabilityCounters | ForEach-Object {
-        $wear = $_.Wear
-        if ($null -ne $wear) {
-          try {
-            $number = [double]$wear
-            if (-not [double]::IsNaN($number) -and -not [double]::IsInfinity($number) -and $number -ge 0 -and $number -le 100) { $number }
-          }
-          catch { }
+    if (-not $diskIdentity -and $friendlyName) {
+      $diskIdentity = [pscustomobject]@{ deviceId = 'storage-device:' + [string]$physicalDisk.DeviceId; deviceName = $friendlyName }
+    }
+    if (-not $diskIdentity) { continue }
+
+    $hasTemperature = @($payload.sensors | Where-Object { $_.role -eq 'storage-temperature' -and $_.deviceId -eq $diskIdentity.deviceId }).Count -gt 0
+    if (-not $hasTemperature -and $null -ne $reliability.Temperature) {
+      Add-ObsUiSensor ('windows:storage-temperature:' + $diskIdentity.deviceId) '硬盘温度' 'storage' 'temperature' $reliability.Temperature '°C' 'windows' 'Windows 存储' 'storage-temperature' $diskIdentity.deviceId $diskIdentity.deviceName
+    }
+
+    # Windows exposes Wear as the percentage already consumed. Only emit a
+    # remaining-life value when the counter is present and bounded; never
+    # turn a generic Healthy status into a made-up 100% reading.
+    $hasHealth = @($payload.sensors | Where-Object { $_.role -eq 'storage-health' -and $_.deviceId -eq $diskIdentity.deviceId }).Count -gt 0
+    if (-not $hasHealth -and $null -ne $reliability.Wear) {
+      try {
+        $wear = [double]$reliability.Wear
+        if (-not [double]::IsNaN($wear) -and -not [double]::IsInfinity($wear) -and $wear -ge 0 -and $wear -le 100) {
+          $remainingLife = 100 - $wear
+          Add-ObsUiSensor ('windows:storage-health:' + $diskIdentity.deviceId) '磁盘剩余寿命' 'storage' 'load' $remainingLife '%' 'windows' 'Windows 存储' 'storage-health' $diskIdentity.deviceId $diskIdentity.deviceName
         }
-      })
-      if ($wearValues.Count -gt 0) {
-        $remainingLife = 100 - (($wearValues | Measure-Object -Maximum).Maximum)
-        Add-ObsUiSensor 'windows:storage-health' '磁盘剩余寿命' 'storage' 'load' $remainingLife '%' 'windows' 'Windows 存储' 'storage-health'
       }
+      catch { }
     }
   }
-  catch { }
 }
+catch { }
 if (-not ($payload.sensors | Where-Object role -eq 'cpu-temperature')) {
   try {
     $temperatures = @(Get-CimInstance -Namespace 'root/wmi' -ClassName MSAcpi_ThermalZoneTemperature -ErrorAction Stop | ForEach-Object { $_.CurrentTemperature / 10 - 273.15 })
@@ -915,7 +989,7 @@ type NetworkMetricsPayload = {
 type SystemSensorCategory = "cpu" | "gpu" | "memory" | "motherboard" | "storage" | "system";
 type SystemSensorKind = "clock" | "voltage" | "power" | "load" | "temperature";
 type SystemSensorSource = "windows" | "hardware-monitor" | "hwinfo" | "nvidia-smi";
-type SystemSensorSnapshot = { id: string; label: string; category: SystemSensorCategory; kind: SystemSensorKind; value: number; unit: "MHz" | "V" | "W" | "%" | "°C"; source: SystemSensorSource; sourceLabel: string; role: string | null };
+type SystemSensorSnapshot = { id: string; label: string; category: SystemSensorCategory; kind: SystemSensorKind; value: number; unit: "MHz" | "V" | "W" | "%" | "°C"; source: SystemSensorSource; sourceLabel: string; role: string | null; deviceId?: string; deviceName?: string };
 type SystemSensorSources = { hardwareMonitor: "LibreHardwareMonitor" | "OpenHardwareMonitor" | null; hwinfo: boolean; nvidia: boolean };
 type DetailedSensorSnapshot = { sensors: SystemSensorSnapshot[]; sources: SystemSensorSources };
 type ProxyLaunchKind = "flclash" | "clash-verge";
@@ -952,8 +1026,9 @@ function asFiniteNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-function asNonEmptyString(value: unknown): string | null {
-  return typeof value === "string" && value.trim() ? value.trim() : null;
+function asNonEmptyString(value: unknown, maxLength = Number.POSITIVE_INFINITY): string | null {
+  const trimmed = typeof value === "string" ? value.trim() : "";
+  return trimmed && trimmed.length <= maxLength ? trimmed : null;
 }
 
 function asNullableString(value: unknown): string | null {
@@ -1010,23 +1085,14 @@ async function readJsonBody(request: IncomingMessage): Promise<unknown> {
 }
 
 async function writeLocalModelSettings(settings: LocalModelSettings) {
-  await mkdir(LITERATURE_DATABASE_ROOT, { recursive: true });
-  const temporaryPath = `${localModelSettingsPath}.${process.pid}.${randomUUID()}.tmp`;
-  await writeFile(temporaryPath, `${JSON.stringify(settings, null, 2)}\n`, "utf8");
-  await rename(temporaryPath, localModelSettingsPath);
+  await writeJsonState(localModelSettingsPath(), settings);
 }
 
 async function readLocalModelSettings(): Promise<LocalModelSettings> {
-  try {
-    const payload = JSON.parse(await readFile(localModelSettingsPath, "utf8"));
-    const settings = parseLocalModelSettings(payload);
-    if (!settings) throw new Error("本地模型设置格式无效。");
-    return settings;
-  } catch {
-    const settings = normalizeLocalModelSettings(DEFAULT_LOCAL_MODEL_SETTINGS);
-    await writeLocalModelSettings(settings).catch(() => undefined);
-    return settings;
-  }
+  const payload = await readJsonState(localModelSettingsPath(), DEFAULT_LOCAL_MODEL_SETTINGS);
+  const settings = parsePersistedLocalModelSettings(payload);
+  if (!settings) throw new Error("本地模型设置格式无效。");
+  return settings;
 }
 
 function readHWiNFOPageToken(value: unknown) {
@@ -1037,7 +1103,7 @@ function readHWiNFOPageToken(value: unknown) {
 type HWiNFOStartResult = { status: "started" | "already-running" | "unavailable" };
 
 type HWiNFOProcessSnapshot = { pid: number; processName: string };
-type HWiNFOTaskStatus = { status: string; processId: number; hwinfoPid: number; isAdministrator: boolean; supportsStopAll: boolean };
+type HWiNFOTaskStatus = { status: string; processId: number; hwinfoPid: number; isAdministrator: boolean; supportsStopOwned: boolean };
 
 const hwinfoProcessNames = new Set(["hwinfo64.exe", "hwinfo32.exe", "hwinfo.exe"]);
 
@@ -1086,32 +1152,38 @@ async function readHWiNFOTaskStatus(): Promise<HWiNFOTaskStatus | null> {
     const hwinfoPid = asFiniteNumber(record?.hwinfoPid);
     const isAdministrator = record?.isAdministrator === true;
     if (!status || processId === null || !Number.isInteger(processId) || processId <= 0 || hwinfoPid === null || !Number.isInteger(hwinfoPid) || hwinfoPid <= 0 || !isAdministrator) return null;
-    return { status, processId, hwinfoPid, isAdministrator, supportsStopAll: record?.supportsStopAll === true };
+    return { status, processId, hwinfoPid, isAdministrator, supportsStopOwned: record?.supportsStopOwned === true };
   } catch {
     return null;
   }
 }
 
-async function readHWiNFOTaskCapability() {
-  try {
-    const record = asRecord(JSON.parse(await readFile(hwinfoTaskCapabilityFile, "utf8").then((value) => value.replace(/^\uFEFF/, ""))));
-    return record?.supportsStopAll === true;
-  } catch {
-    return false;
-  }
-}
+type HWiNFOProcessMetadata = { parentProcessId: number; creationTime: number };
 
-async function readHWiNFOProcessParentId(pid: number): Promise<number | null> {
-  if (process.platform !== "win32") return null;
+async function readHWiNFOProcessMetadata(pid: number): Promise<HWiNFOProcessMetadata | null> {
+  if (process.platform !== "win32" || !Number.isInteger(pid) || pid <= 0 || pid > 2_147_483_647) return null;
   try {
-    const { stdout } = await execFileAsync("wmic.exe", ["process", "where", `ProcessId=${pid}`, "get", "ParentProcessId", "/value"], {
+    const script = `
+$process = Get-CimInstance -ClassName Win32_Process -Filter 'ProcessId = ${pid}' -ErrorAction Stop
+if ($null -ne $process) {
+  $creationTime = [DateTimeOffset]::new([DateTime]$process.CreationDate).ToUnixTimeMilliseconds()
+  [pscustomobject]@{
+    parentProcessId = [int]$process.ParentProcessId
+    creationTime = [long]$creationTime
+  } | ConvertTo-Json -Compress
+}
+`;
+    const { stdout } = await execFileAsync(telemetryPowerShell, powerShellCommandArgs(script), {
       windowsHide: true,
       timeout: 3_000,
       maxBuffer: 16 * 1024,
     });
-    const match = stdout.match(/ParentProcessId\s*=\s*(\d+)/i);
-    const parentProcessId = match ? Number(match[1]) : NaN;
-    return Number.isInteger(parentProcessId) && parentProcessId > 0 ? parentProcessId : null;
+    const record = asRecord(JSON.parse(stdout.trim()));
+    const parentProcessId = asFiniteNumber(record?.parentProcessId);
+    const creationTime = asFiniteNumber(record?.creationTime);
+    if (parentProcessId === null || !Number.isInteger(parentProcessId) || parentProcessId <= 0
+      || creationTime === null || !Number.isSafeInteger(creationTime) || creationTime <= 0) return null;
+    return { parentProcessId, creationTime };
   } catch {
     return null;
   }
@@ -1120,11 +1192,9 @@ async function readHWiNFOProcessParentId(pid: number): Promise<number | null> {
 async function adoptManagedHWiNFO(processSnapshot: HWiNFOProcessSnapshot): Promise<HWiNFOOwnerRecord | null> {
   const taskStatus = await readHWiNFOTaskStatus();
   if (!taskStatus || taskStatus.status !== "running" || taskStatus.hwinfoPid !== processSnapshot.pid) return null;
-  const parentProcessId = await readHWiNFOProcessParentId(processSnapshot.pid);
-  if (parentProcessId !== taskStatus.processId) return null;
-  const creationTime = await readHWiNFOProcessCreationTime(processSnapshot.pid);
-  if (creationTime === null) return null;
-  await writeHWiNFOOwner(processSnapshot, new Date(creationTime).toISOString());
+  const processMetadata = await readHWiNFOProcessMetadata(processSnapshot.pid);
+  if (!processMetadata || processMetadata.parentProcessId !== taskStatus.processId) return null;
+  await writeHWiNFOOwner(processSnapshot, new Date(processMetadata.creationTime).toISOString());
   return readHWiNFOOwner();
 }
 
@@ -1146,27 +1216,8 @@ async function readHWiNFOOwner(): Promise<HWiNFOOwnerRecord | null> {
 }
 
 async function readHWiNFOProcessCreationTime(pid: number): Promise<number | null> {
-  if (process.platform !== "win32") return null;
-  try {
-    const { stdout } = await execFileAsync("wmic.exe", ["process", "where", `ProcessId=${pid}`, "get", "Name,CreationDate,ProcessId", "/format:csv"], {
-      windowsHide: true,
-      timeout: 3_000,
-      maxBuffer: 16 * 1024,
-    });
-    const creation = stdout.split(/\r?\n/g)
-      .map((line) => line.trim())
-      .map((line) => line.split(",").map((part) => part.trim()))
-      .find((parts) => parts.some((part) => /^\d{14}\.\d{6}[+-]\d{3}$/.test(part)))
-      ?.find((part) => /^\d{14}\.\d{6}[+-]\d{3}$/.test(part));
-    const match = creation?.match(/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})\.\d{6}([+-])(\d{3})$/);
-    if (!match) return null;
-    const [, year, month, day, hour, minute, second, sign, offset] = match;
-    const local = Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second));
-    const offsetMinutes = Number(offset) * (sign === "+" ? 1 : -1);
-    return local - offsetMinutes * 60_000;
-  } catch {
-    return null;
-  }
+  const processMetadata = await readHWiNFOProcessMetadata(pid);
+  return processMetadata?.creationTime ?? null;
 }
 
 async function removeHWiNFOOwner() {
@@ -1177,7 +1228,10 @@ async function requestHWiNFOStop(pid: number) {
   try {
     await mkdir(dirname(hwinfoStopRequestFile), { recursive: true });
     const temporaryPath = `${hwinfoStopRequestFile}.${process.pid}.${randomUUID()}.tmp`;
-    await writeFile(temporaryPath, `${JSON.stringify({ pid, requestedAt: new Date().toISOString() })}\n`, "utf8");
+    // The elevated task already owns this exact HWiNFO child. Ask that task
+    // to stop its child directly; the task's PID/time recheck can misread a
+    // UTC timestamp after PowerShell's JSON date conversion on UTC+ zones.
+    await writeFile(temporaryPath, `${JSON.stringify({ stopOwned: true, pid, requestedAt: new Date().toISOString() })}\n`, "utf8");
     await rename(temporaryPath, hwinfoStopRequestFile);
     return true;
   } catch {
@@ -1185,22 +1239,12 @@ async function requestHWiNFOStop(pid: number) {
   }
 }
 
-async function requestAllHWiNFOStop() {
-  try {
-    await mkdir(dirname(hwinfoStopRequestFile), { recursive: true });
-    const temporaryPath = `${hwinfoStopRequestFile}.${process.pid}.${randomUUID()}.tmp`;
-    await writeFile(temporaryPath, `${JSON.stringify({ all: true, requestedAt: new Date().toISOString() })}\n`, "utf8");
-    await rename(temporaryPath, hwinfoStopRequestFile);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function requestAllHWiNFOStopSync() {
+function requestOwnedHWiNFOStopSync() {
   try {
     mkdirSync(dirname(hwinfoStopRequestFile), { recursive: true });
-    writeFileSync(hwinfoStopRequestFile, `${JSON.stringify({ all: true, requestedAt: new Date().toISOString() })}\n`, "utf8");
+    const temporaryPath = `${hwinfoStopRequestFile}.${process.pid}.${randomUUID()}.tmp`;
+    writeFileSync(temporaryPath, `${JSON.stringify({ stopOwned: true, requestedAt: new Date().toISOString() })}\n`, "utf8");
+    renameSync(temporaryPath, hwinfoStopRequestFile);
     return true;
   } catch {
     return false;
@@ -1221,26 +1265,24 @@ function runHWiNFOTaskSync() {
   }
 }
 
-function taskSupportsStopAllSync() {
+function taskSupportsStopOwnedSync() {
   try {
     const record = JSON.parse(readFileSync(hwinfoTaskStatusFile, "utf8").replace(/^\uFEFF/, "")) as RecordLike;
-    if (record.supportsStopAll === true) return true;
+    if (record.supportsStopOwned === true) return true;
   } catch { }
   try {
     const record = JSON.parse(readFileSync(hwinfoTaskCapabilityFile, "utf8").replace(/^\uFEFF/, "")) as RecordLike;
-    return record.supportsStopAll === true;
+    return record.supportsStopOwned === true;
   } catch {
     return false;
   }
 }
 
 // If Vite is terminated before the HTTP server can emit its `close` event,
-// leave the elevated task host a request to close every HWiNFO process.
+// ask the elevated task host to stop only the process recorded as ObsUI-owned.
 process.once("exit", () => {
   if (!isViteServeProcess) return;
-  // Never wake an old task installation from a build/CLI process: its legacy
-  // host would interpret the all-process request as a normal launch request.
-  if (taskSupportsStopAllSync() && requestAllHWiNFOStopSync()) runHWiNFOTaskSync();
+  if (taskSupportsStopOwnedSync() && requestOwnedHWiNFOStopSync()) runHWiNFOTaskSync();
 });
 
 async function runHWiNFOTask() {
@@ -1265,8 +1307,7 @@ async function startOwnedHWiNFO(): Promise<HWiNFOStartResult> {
     const existing = await readHWiNFOProcesses();
     if (existing.length > 0) {
       // A reused Vite process can find HWiNFO left by the previous ObsUI
-      // session. Re-adopt the task-owned process for accurate start tracking;
-      // the close path intentionally stops every HWiNFO instance.
+      // session. Re-adopt only a process launched by the registered task.
       for (const processSnapshot of existing) {
         if (await adoptManagedHWiNFO(processSnapshot)) break;
       }
@@ -1363,87 +1404,8 @@ async function closeOwnedHWiNFO(): Promise<HWiNFOCloseResult> {
   }
 }
 
-async function waitForAllHWiNFOClosed(deadline: number) {
-  do {
-    if ((await readHWiNFOProcesses()).length === 0) return true;
-    await new Promise<void>((resolvePromise) => setTimeout(resolvePromise, 300));
-  } while (Date.now() < deadline);
-  return (await readHWiNFOProcesses()).length === 0;
-}
-
-async function taskKillHWiNFOProcesses(processes: HWiNFOProcessSnapshot[]) {
-  await Promise.all(processes.map(async (processSnapshot) => {
-    try {
-      await execFileAsync("taskkill.exe", ["/PID", String(processSnapshot.pid), "/T", "/F"], {
-        windowsHide: true,
-        timeout: 20_000,
-        maxBuffer: 16 * 1024,
-      });
-    } catch {
-      // Elevated HWiNFO instances may reject a medium-integrity taskkill. The
-      // pre-registered elevated task below is the authoritative fallback.
-    }
-  }));
-}
-
-async function closeAllHWiNFO(): Promise<HWiNFOCloseResult> {
-  if (process.platform !== "win32") return { status: "unavailable" };
-  try {
-    let current = await readHWiNFOProcesses();
-    if (current.length === 0) {
-      await unlink(hwinfoStopRequestFile).catch(() => undefined);
-      await removeHWiNFOOwner();
-      return { status: "already-closed" };
-    }
-
-    // First try the normal process exit path. This also handles HWiNFO that
-    // was started manually without requiring the elevated task.
-    await taskKillHWiNFOProcesses(current);
-    if (await waitForAllHWiNFOClosed(Date.now() + 1_500)) {
-      await unlink(hwinfoStopRequestFile).catch(() => undefined);
-      await removeHWiNFOOwner();
-      return { status: "closed" };
-    }
-
-    const taskStatus = await readHWiNFOTaskStatus();
-    const taskSupportsStopAll = taskStatus?.supportsStopAll === true || await readHWiNFOTaskCapability();
-    if (taskSupportsStopAll) {
-      // Write before waking a stopped task. The updated task host consumes the
-      // request before launching anything, so Vite shutdown cannot create a
-      // fresh HWiNFO instance while trying to close the old one.
-      const stopRequested = await requestAllHWiNFOStop();
-      if (stopRequested && taskStatus?.status !== "running") await runHWiNFOTask();
-    } else if (taskStatus?.status === "running") {
-      // Compatibility with an older installed task host: it understands the
-      // legacy one-PID request, but not the all-process request yet.
-      for (const processSnapshot of current) {
-        await requestHWiNFOStop(processSnapshot.pid);
-        await waitForAllHWiNFOClosed(Date.now() + 2_000);
-        current = await readHWiNFOProcesses();
-        if (current.length === 0) break;
-      }
-    }
-
-    if (await waitForAllHWiNFOClosed(Date.now() + 8_000)) {
-      await unlink(hwinfoStopRequestFile).catch(() => undefined);
-      await removeHWiNFOOwner();
-      return { status: "closed" };
-    }
-
-    // The task host may have completed just as the first poll observed the
-    // process. Give direct taskkill one final, PID-scoped attempt before
-    // reporting that an external privilege boundary remains.
-    current = await readHWiNFOProcesses();
-    await taskKillHWiNFOProcesses(current);
-    if (await waitForAllHWiNFOClosed(Date.now() + 2_000)) {
-      await unlink(hwinfoStopRequestFile).catch(() => undefined);
-      await removeHWiNFOOwner();
-      return { status: "closed" };
-    }
-    return { status: "unavailable" };
-  } catch {
-    return { status: "unavailable" };
-  }
+async function closeManagedHWiNFO(): Promise<HWiNFOCloseResult> {
+  return closeOwnedHWiNFO();
 }
 
 const sensorCategories: SystemSensorCategory[] = ["cpu", "gpu", "memory", "motherboard", "storage", "system"];
@@ -1481,9 +1443,12 @@ function readSystemSensor(value: unknown): SystemSensorSnapshot | null {
   const source = typeof record.source === "string" && sensorSources.includes(record.source as SystemSensorSource) ? record.source as SystemSensorSource : null;
   const sourceLabel = asNonEmptyString(record.sourceLabel);
   const role = record.role === null || record.role === undefined ? null : asNonEmptyString(record.role);
+  const deviceId = record.deviceId === undefined ? undefined : asNonEmptyString(record.deviceId, 120);
+  const deviceName = record.deviceName === undefined ? undefined : asNonEmptyString(record.deviceName, 240);
   if (!id || !label || !category || !kind || !source || !sourceLabel || role === undefined || !isSensorUnit(kind, record.unit)) return null;
+  if ((record.deviceId !== undefined && !deviceId) || (record.deviceName !== undefined && !deviceName)) return null;
   const sensorValue = readSensorValue(record.value, kind);
-  return sensorValue === null ? null : { id, label, category, kind, value: sensorValue, unit: record.unit, source, sourceLabel, role };
+  return sensorValue === null ? null : { id, label, category, kind, value: sensorValue, unit: record.unit, source, sourceLabel, role, ...(deviceId ? { deviceId } : {}), ...(deviceName ? { deviceName } : {}) };
 }
 
 function parseDetailedSensorSnapshot(payload: unknown): DetailedSensorSnapshot | null {
@@ -1495,17 +1460,18 @@ function parseDetailedSensorSnapshot(payload: unknown): DetailedSensorSnapshot |
   return sensors.some((sensor) => sensor === null) || new Set(sensors.map((sensor) => sensor!.id)).size !== sensors.length ? null : { sensors: sensors as SystemSensorSnapshot[], sources: { hardwareMonitor, hwinfo: record.hwinfo, nvidia: record.nvidia } };
 }
 
-function createWindowsSensor(id: string, label: string, category: SystemSensorCategory, role: string, value: unknown, kind: SystemSensorKind = "load"): SystemSensorSnapshot | null {
+function createWindowsSensor(id: string, label: string, category: SystemSensorCategory, role: string, value: unknown, kind: SystemSensorKind = "load", deviceId?: string, deviceName?: string): SystemSensorSnapshot | null {
   const sensorValue = readSensorValue(value, kind);
   if (sensorValue === null) return null;
   const unit = kind === "clock" ? "MHz" : kind === "voltage" ? "V" : kind === "power" ? "W" : kind === "temperature" ? "°C" : "%";
-  return { id, label, category, role, value: sensorValue, kind, unit, source: "windows", sourceLabel: "Windows" };
+  return { id, label, category, role, value: sensorValue, kind, unit, source: "windows", sourceLabel: "Windows", ...(deviceId ? { deviceId } : {}), ...(deviceName ? { deviceName } : {}) };
 }
 
 function dedupeSensors(sensors: SystemSensorSnapshot[]) {
   const selected = new Map<string, SystemSensorSnapshot>();
   for (const sensor of sensors) {
-    const key = sensor.role ? `role:${sensor.role}` : `id:${sensor.id}`;
+    const isPerDiskSensor = sensor.category === "storage" && ["disk-load", "storage-health", "storage-temperature"].includes(sensor.role ?? "");
+    const key = isPerDiskSensor ? `role:${sensor.role}:device:${sensor.deviceId ?? sensor.id}` : sensor.role ? `role:${sensor.role}` : `id:${sensor.id}`;
     const previous = selected.get(key);
     if (!previous || sensorSourcePriority[sensor.source] > sensorSourcePriority[previous.source]) selected.set(key, sensor);
   }
@@ -1514,22 +1480,31 @@ function dedupeSensors(sensors: SystemSensorSnapshot[]) {
 
 function temperaturesFromSensors(sensors: SystemSensorSnapshot[]) {
   const temperature = (role: string) => sensors.find((sensor) => sensor.role === role && sensor.kind === "temperature")?.value ?? null;
-  return { cpu: temperature("cpu-temperature"), gpu: temperature("gpu-temperature"), memory: temperature("memory-temperature"), disk: temperature("storage-temperature") };
+  const storageTemperatures = sensors.filter((sensor) => sensor.role === "storage-temperature" && sensor.kind === "temperature").map((sensor) => sensor.value);
+  return { cpu: temperature("cpu-temperature"), gpu: temperature("gpu-temperature"), memory: temperature("memory-temperature"), disk: storageTemperatures.length ? Math.max(...storageTemperatures) : null };
 }
 
-function baselineSensors(metrics: RecordLike): SystemSensorSnapshot[] {
+function baselineSensors(metrics: RecordLike, hasDetailedDiskActivity: boolean): SystemSensorSnapshot[] {
+  const diskActivities = Array.isArray(metrics.diskActivities) ? metrics.diskActivities.map((value, index) => {
+    const record = asRecord(value);
+    if (!record) return null;
+    const id = asNonEmptyString(record.id, 120) ?? `windows:disk-activity:${index}`;
+    const deviceId = asNonEmptyString(record.deviceId, 120) ?? undefined;
+    const deviceName = asNonEmptyString(record.deviceName, 240) ?? undefined;
+    return createWindowsSensor(id, "硬盘活动", "storage", "disk-load", record.value, "load", deviceId, deviceName);
+  }).filter((sensor): sensor is SystemSensorSnapshot => sensor !== null) : [];
   return [
     createWindowsSensor("windows:cpu-load", "CPU 占用", "cpu", "cpu-load", metrics.cpu),
     createWindowsSensor("windows:gpu-load", "GPU 占用", "gpu", "gpu-load", metrics.gpu),
     createWindowsSensor("windows:memory-load", "内存占用", "memory", "memory-load", metrics.memory),
-    createWindowsSensor("windows:disk-load", "硬盘活动", "storage", "disk-load", metrics.disk),
+    ...(diskActivities.length ? diskActivities : hasDetailedDiskActivity ? [] : [createWindowsSensor("windows:disk-load", "全部磁盘活动", "storage", "disk-load", metrics.disk)]),
     createWindowsSensor("windows:cpu-clock", "CPU 频率", "cpu", "cpu-clock", metrics.cpuClock, "clock"),
   ].filter((sensor): sensor is SystemSensorSnapshot => sensor !== null);
 }
 
 async function readDetailedSensors(): Promise<DetailedSensorSnapshot> {
   try {
-    const { stdout } = await execFileAsync(telemetryPowerShell, powerShellCommandArgs(sensorScript), { windowsHide: true, timeout: 8_000, maxBuffer: 512 * 1024 });
+    const { stdout } = await execFileAsync(telemetryPowerShell, powerShellCommandArgs(sensorScript), { windowsHide: true, timeout: 15_000, maxBuffer: 512 * 1024 });
     return parseDetailedSensorSnapshot(JSON.parse(stdout.trim())) ?? emptyDetailedSensorSnapshot();
   } catch {
     return emptyDetailedSensorSnapshot();
@@ -1567,8 +1542,7 @@ async function readCachedDeviceProfile() {
   return deviceProfilePending;
 }
 
-async function readCachedSystemMetrics(): Promise<SystemMetricsSnapshot> {
-  if (systemMetricsCache && Date.now() - systemMetricsCache.sampledAt < systemSensorIntervalMs) return systemMetricsCache.data;
+function refreshCachedSystemMetrics(): Promise<SystemMetricsSnapshot> {
   if (!systemMetricsPending) {
     systemMetricsPending = Promise.all([
       execFileAsync(telemetryPowerShell, powerShellCommandArgs(metricsScript), { windowsHide: true, timeout: 8_000, maxBuffer: 64 * 1024 }),
@@ -1585,10 +1559,21 @@ async function readCachedSystemMetrics(): Promise<SystemMetricsSnapshot> {
   return systemMetricsPending;
 }
 
+async function readCachedSystemMetrics(): Promise<SystemMetricsSnapshot> {
+  const cacheAge = systemMetricsCache ? Date.now() - systemMetricsCache.sampledAt : Number.POSITIVE_INFINITY;
+  if (systemMetricsCache && cacheAge < systemSensorIntervalMs) return systemMetricsCache.data;
+  if (systemMetricsCache && cacheAge < systemMetricsStaleLimitMs) {
+    void refreshCachedSystemMetrics().catch(() => undefined);
+    return systemMetricsCache.data;
+  }
+  return refreshCachedSystemMetrics();
+}
+
 async function sendSystemMetrics(response: ServerResponse) {
   try {
     const { metrics, detailed, device } = await readCachedSystemMetrics();
-    const sensors = dedupeSensors([...detailed.sensors, ...baselineSensors(metrics)]);
+    const hasDetailedDiskActivity = detailed.sensors.some((sensor) => sensor.category === "storage" && sensor.role === "disk-load");
+    const sensors = dedupeSensors([...detailed.sensors, ...baselineSensors(metrics, hasDetailedDiskActivity)]);
     sendJson(response, 200, { ...metrics, temperatures: temperaturesFromSensors(sensors), sensors, sources: detailed.sources, device });
   } catch {
     sendJson(response, 503, { message: "Windows performance counters are unavailable." });
@@ -1980,6 +1965,7 @@ const updateLocalModelSettings = async (request: IncomingMessage, response: Serv
     const payload = asRecord(await readJsonBody(request));
     const settings = parseLocalModelSettings(payload?.settings ?? payload);
     if (!settings) return sendJson(response, 400, { message: "本地模型设置无效。" });
+    await readLocalModelSettings();
     await writeLocalModelSettings(settings);
     return sendJson(response, 200, await readLocalModels());
   } catch {
@@ -1990,7 +1976,7 @@ const updateLocalModelSettings = async (request: IncomingMessage, response: Serv
 const ollamaEnvironment = () => ({
   ...process.env,
   OLLAMA_MODELS: ollamaModelRoot,
-  OLLAMA_CONTEXT_LENGTH: "65536",
+  OLLAMA_CONTEXT_LENGTH: String(DEFAULT_LOCAL_MODEL_SETTINGS.contextLength),
   OLLAMA_MAX_LOADED_MODELS: "1",
   OLLAMA_NUM_PARALLEL: "1",
 });
@@ -2043,7 +2029,7 @@ async function startOllamaService() {
       }
       let launchError: Error | null = null;
       try {
-        const child = spawn(ollamaExecutable, ["serve"], {
+        const child = spawn(ollamaExecutable(), ["serve"], {
           // Keep Ollama and its llama-server child in the hidden Vite process
           // group. A detached group can otherwise surface Windows Terminal.
           detached: false,
@@ -2117,7 +2103,7 @@ async function stopInstalledLocalModel(modelName: string, protectExternalConsume
     throw new Error("检测到其他本地模型客户端正在使用 Ollama，已跳过自动卸载。");
   }
   try {
-    await execFileAsync(ollamaExecutable, ["stop", modelName], {
+    await execFileAsync(ollamaExecutable(), ["stop", modelName], {
       windowsHide: true,
       timeout: 10_000,
       maxBuffer: 32 * 1024,
@@ -2170,7 +2156,7 @@ const controlLocalModel = async (request: IncomingMessage, response: ServerRespo
 
 async function readLocalModelBusy(): Promise<LocalModelState["busy"]> {
   try {
-    const { stdout } = await execFileAsync(ollamaExecutable, ["ps"], {
+    const { stdout } = await execFileAsync(ollamaExecutable(), ["ps"], {
       windowsHide: true,
       timeout: 2_500,
       maxBuffer: 32 * 1024,
@@ -2416,7 +2402,7 @@ function localMetricsPlugin(config: NetworkConfig): Plugin {
       if (hwinfoStartPending) await hwinfoStartPending.catch(() => undefined);
       if (hwinfoClosePending) await hwinfoClosePending.catch(() => undefined);
       if (!hwinfoClosePending) {
-        hwinfoClosePending = closeAllHWiNFO().finally(() => { hwinfoClosePending = null; });
+        hwinfoClosePending = closeManagedHWiNFO().finally(() => { hwinfoClosePending = null; });
         await hwinfoClosePending.catch(() => undefined);
       }
     })();
@@ -2453,7 +2439,7 @@ function localMetricsPlugin(config: NetworkConfig): Plugin {
         scheduleHWiNFOClose();
         return;
       }
-      hwinfoClosePending = closeAllHWiNFO().finally(() => { hwinfoClosePending = null; });
+      hwinfoClosePending = closeManagedHWiNFO().finally(() => { hwinfoClosePending = null; });
     }, 3_000);
   };
 
@@ -2620,7 +2606,16 @@ function localMetricsPlugin(config: NetworkConfig): Plugin {
 
 export default defineConfig(({ mode }) => {
   const environment = loadEnv(mode, process.cwd(), "OBSUI_");
-  const workspaceRoot = resolve(process.cwd(), "../..");
+  for (const [key, value] of Object.entries(environment)) if (!process.env[key]) process.env[key] = value;
+  const configuredDatabaseRoot = environment.OBSUI_LITERATURE_DATABASE_ROOT?.trim();
+  const configuredWorkspaceRoot = environment.OBSUI_WORKSPACE_ROOT?.trim();
+  if (configuredDatabaseRoot && !isAbsolute(configuredDatabaseRoot)) throw new Error("OBSUI_LITERATURE_DATABASE_ROOT 必须是绝对路径。");
+  if (configuredWorkspaceRoot && !isAbsolute(configuredWorkspaceRoot)) throw new Error("OBSUI_WORKSPACE_ROOT 必须是绝对路径。");
+  process.env.OBSUI_LITERATURE_DATABASE_ROOT = configuredDatabaseRoot || getLiteratureDatabaseRoot();
+  ollamaModelRoot = resolve(environment.OBSUI_OLLAMA_MODEL_ROOT?.trim() || "C:\\AIModels");
+  process.env.OBSUI_OLLAMA_MODEL_ROOT = ollamaModelRoot;
+  process.env.OLLAMA_MODELS = ollamaModelRoot;
+  const workspaceRoot = configuredWorkspaceRoot || resolve(process.cwd(), "../..");
   const buildHistory = (() => {
     try {
       return execFileSync("git", ["log", "-4", "--date=short", "--pretty=format:%h\t%ad\t%s"], { cwd: process.cwd(), windowsHide: true, encoding: "utf8" })
@@ -2638,6 +2633,11 @@ export default defineConfig(({ mode }) => {
     define: {
       __OBSUI_VERSION__: JSON.stringify(packageJson.version),
       __OBSUI_BUILD_HISTORY__: JSON.stringify(buildHistory),
+    },
+    build: {
+      // Mermaid's lazy parser chunks are about 694 KB minified / 171 KB gzip;
+      // route-level splitting keeps the initial application chunk near 311 KB.
+      chunkSizeWarningLimit: 700,
     },
     server: {
       host: "127.0.0.1",

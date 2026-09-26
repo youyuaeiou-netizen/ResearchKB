@@ -50,7 +50,7 @@ function Write-ObsUiJsonFile([string]$Path, $Payload) {
 
 function Get-ObsUiOwner {
     try {
-        return Get-Content -LiteralPath $ownerPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        return Get-Content -LiteralPath $ownerPath -Raw -Encoding UTF8 | ConvertFrom-Json -DateKind String
     }
     catch {
         return $null
@@ -197,7 +197,7 @@ try {
         return
     }
     try {
-        $expectedStart = [DateTime]::Parse([string]$owner.startedAt, [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::RoundtripKind)
+        $expectedStart = [DateTimeOffset]::Parse([string]$owner.startedAt, [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::RoundtripKind).UtcDateTime
         $actualStart = $process.StartTime.ToUniversalTime()
     }
     catch {
@@ -210,7 +210,7 @@ try {
         return
     }
 
-    Write-ObsUiJsonFile $stopRequestPath ([ordered]@{ pid = $targetPid; requestedAt = [DateTime]::UtcNow.ToString('o') })
+    Write-ObsUiJsonFile $stopRequestPath ([ordered]@{ stopOwned = $true; pid = $targetPid; requestedAt = [DateTime]::UtcNow.ToString('o') })
     $deadline = [DateTime]::UtcNow.AddSeconds(8)
     do {
         Start-Sleep -Milliseconds 300

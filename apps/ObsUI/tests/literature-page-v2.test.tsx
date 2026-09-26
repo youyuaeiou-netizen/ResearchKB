@@ -6,6 +6,9 @@ import { LiteraturePageV2, resetLiteraturePageSessionCache } from "../src/tab-mo
 import { adjustPdfScale, clampPdfScale, filterPdfTextContentItems, isLikelyPdfWatermarkTextItem, normalizePdfSelectionText, normalizePdfWordSelectionText, pdfSelectionMode, releaseLiteratureReaderModels } from "../src/tab-modal-v2/LiteratureReader";
 import { DEFAULT_WORKBENCH_SETTINGS } from "../src/workbench-settings";
 
+const { mockPdfGetDocument } = vi.hoisted(() => ({ mockPdfGetDocument: vi.fn() }));
+vi.mock("pdfjs-dist", () => ({ GlobalWorkerOptions: { workerSrc: "" }, getDocument: mockPdfGetDocument }));
+
 const mounts: { host: HTMLDivElement; root: Root }[] = [];
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -81,6 +84,15 @@ async function mount(node: ReactNode) {
   return host;
 }
 
+async function settleReaderImport() {
+  await act(async () => {
+    await vi.dynamicImportSettled();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
+
 function changeInput(input: HTMLInputElement, value: string) {
   const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
   act(() => {
@@ -137,6 +149,16 @@ function createItem(overrides: Partial<LiteratureUnifiedItem> = {}): LiteratureU
   };
 }
 
+function createDuplicateItem(id: string, itemKey: string): LiteratureUnifiedItem {
+  const title = `Suspected duplicate ${id}`;
+  return createItem({
+    id,
+    title,
+    status: "conflict",
+    duplicateCandidates: [{ itemKey, title: `Zotero ${title}`, authors: ["Kim"], year: 2024, doi: "10.1000/example", score: 1, reason: "doi" }],
+  });
+}
+
 function createRuntime(items: readonly LiteratureUnifiedItem[]): LiteratureRuntimeStatus {
   const local = items.filter((item) => item.source !== "zotero");
   const counts = {
@@ -158,7 +180,7 @@ function createRuntime(items: readonly LiteratureUnifiedItem[]): LiteratureRunti
     settings: { version: 2, inboxConfigured: true, inboxDisplayName: "ResearchPapers", modelFamily: "qwen3.5:9b", modelProfile: "64k", runtimeTag: "qwen3.5:9b-64k", deepAnalysisProvider: "ollama", deepAnalysisModel: "", deepAnalysisReasoningEffort: "medium" },
     watcher: { active: true, lastScanAt: Date.now(), error: null },
     model: { provider: "ollama", status: "ready", configured: true, selected: { family: "qwen3.5:9b", profile: "64k", runtimeTag: "qwen3.5:9b-64k" }, families: [{ name: "qwen3.5:4b", profiles: [{ profile: "default", runtimeTag: "qwen3.5:4b", contextLength: null, size: 3_000_000_000, modifiedAt: Date.now() }] }, { name: "qwen3.5:9b", profiles: [{ profile: "64k", runtimeTag: "qwen3.5:9b-64k", contextLength: 65_536, size: 6_600_000_000, modifiedAt: Date.now() }, { profile: "128k", runtimeTag: "qwen3.5:9b-128k", contextLength: 131_072, size: 6_600_000_000, modifiedAt: Date.now() }] }], error: null },
-    zotero: { connected: true, authorized: false, serverId: "server-1", version: "3", error: null },
+    zotero: { connected: true, authorized: false, writeSupported: true, serverId: "server-1", version: "3", error: null },
     counts,
     checkedAt: Date.now(),
   };
@@ -169,6 +191,8 @@ let fetchMock: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   resetLiteraturePageSessionCache();
+  mockPdfGetDocument.mockReset();
+  mockPdfGetDocument.mockImplementation(() => ({ promise: new Promise(() => undefined), destroy: vi.fn(async () => undefined) }));
   fixtureItems = [
     createItem(),
     createItem({ id: "zotero-2", source: "zotero", status: "imported", title: "A conceptual multi-laser integration technology", translatedTitleZh: null, authors: ["Peng"], year: 2021, journal: "Science", abstract: "A Zotero abstract.", summaryZh: null, suggestedTags: [], analysisSource: null, relativePath: null, folderName: null, fileName: null, size: null, mtimeMs: null, doi: "10.1126/science.abg1487", attachmentCount: 1, zoteroItemKey: "ABCD1234" }),
@@ -212,6 +236,21 @@ beforeEach(() => {
       return jsonResponse(preview);
     }
     if (path === "/api/literature/organize/commit" && init?.method === "POST") return jsonResponse({ moved: 1, message: "已整理 1 个文件。" });
+    if (path === "/api/literature/duplicates/merge" && init?.method === "POST") {
+      const body = JSON.parse(String(init.body ?? "{}")) as { items?: { id: string; itemKey: string }[] };
+      const merges = body.items ?? [];
+      fixtureItems = fixtureItems.map((item) => {
+        const merge = merges.find((candidate) => candidate.id === item.id);
+        return merge ? { ...item, source: "merged" as const, status: "matched" as const, zoteroItemKey: merge.itemKey, duplicateCandidates: [] } : item;
+      });
+      return jsonResponse({ processed: merges.length, message: `已将 ${merges.length} 条本地记录关联到已有 Zotero 条目。` });
+    }
+    if (path === "/api/literature/duplicates/ignore" && init?.method === "POST") {
+      const body = JSON.parse(String(init.body ?? "{}")) as { ids?: string[] };
+      const ids = new Set(body.ids ?? []);
+      fixtureItems = fixtureItems.map((item) => ids.has(item.id) ? { ...item, status: "ignored" as const } : item);
+      return jsonResponse({ processed: ids.size, message: `已忽略 ${ids.size} 条疑似重复记录；可在“暂不处理”中恢复。` });
+    }
     const ignoreMatch = path.match(/^\/api\/literature\/items\/([^/]+)\/ignore$/);
     if (ignoreMatch && init?.method === "POST") {
       const id = decodeURIComponent(ignoreMatch[1]);
@@ -269,6 +308,90 @@ afterEach(() => {
 });
 
 describe("文献 V2 页面", () => {
+  it("supports individual duplicate selection and toggling select-all on and off", async () => {
+    fixtureItems.push(createDuplicateItem("duplicate-1", "ZOTERO01"), createDuplicateItem("duplicate-2", "ZOTERO02"));
+    const host = await mount(<LiteraturePageV2 startupRuntime={createRuntime(fixtureItems)} startupItems={fixtureItems} />);
+    const collection = [...host.querySelectorAll<HTMLButtonElement>(".literature-collection")].find((button) => button.textContent?.includes("疑似重复"));
+    await act(async () => {
+      collection?.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await vi.waitFor(() => expect(host.querySelectorAll(".literature-duplicate-candidate-row")).toHaveLength(2));
+
+    const firstCandidate = host.querySelector<HTMLInputElement>('.literature-duplicate-select input[aria-label="选择疑似重复：Suspected duplicate duplicate-1"]')!;
+    await act(async () => firstCandidate.click());
+    expect(firstCandidate.checked).toBe(true);
+    expect(host.querySelector(".literature-duplicate-bulk")?.textContent).toContain("1/2");
+
+    const selectAll = host.querySelector<HTMLInputElement>('input[aria-label="全选或取消全选疑似重复"]')!;
+    await act(async () => selectAll.click());
+    expect(selectAll.checked).toBe(true);
+    expect(host.querySelector(".literature-duplicate-bulk")?.textContent).toContain("2/2");
+    await act(async () => selectAll.click());
+    expect(selectAll.checked).toBe(false);
+    expect(host.querySelector(".literature-duplicate-bulk")?.textContent).toContain("0/2");
+  });
+
+  it("batch-merges all selected local records into their chosen Zotero entries", async () => {
+    fixtureItems.push(createDuplicateItem("duplicate-1", "ZOTERO01"), createDuplicateItem("duplicate-2", "ZOTERO02"));
+    const host = await mount(<LiteraturePageV2 startupRuntime={createRuntime(fixtureItems)} startupItems={fixtureItems} />);
+    const collection = [...host.querySelectorAll<HTMLButtonElement>(".literature-collection")].find((button) => button.textContent?.includes("疑似重复"));
+    await act(async () => {
+      collection?.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await vi.waitFor(() => expect(host.querySelectorAll(".literature-duplicate-candidate-row")).toHaveLength(2));
+    await act(async () => host.querySelector<HTMLInputElement>('input[aria-label="全选或取消全选疑似重复"]')?.click());
+    const mergeButton = [...host.querySelectorAll<HTMLButtonElement>(".literature-duplicate-bulk button")].find((button) => button.textContent?.includes("批量合并"))!;
+    expect(mergeButton.disabled).toBe(false);
+    await act(async () => {
+      mergeButton.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/literature/duplicates/merge", expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({ items: [{ id: "duplicate-1", itemKey: "ZOTERO01" }, { id: "duplicate-2", itemKey: "ZOTERO02" }] }),
+    })));
+    await vi.waitFor(() => expect(host.querySelectorAll(".literature-duplicate-candidate-row")).toHaveLength(0));
+    expect(fixtureItems.filter((item) => item.id.startsWith("duplicate-")).map((item) => [item.source, item.status, item.zoteroItemKey])).toEqual([
+      ["merged", "matched", "ZOTERO01"],
+      ["merged", "matched", "ZOTERO02"],
+    ]);
+    expect(host.textContent).toContain("已将 2 条本地记录关联到已有 Zotero 条目。");
+  });
+
+  it("batch-ignores all selected duplicate records and keeps them recoverable", async () => {
+    fixtureItems.push(createDuplicateItem("duplicate-1", "ZOTERO01"), createDuplicateItem("duplicate-2", "ZOTERO02"));
+    const host = await mount(<LiteraturePageV2 startupRuntime={createRuntime(fixtureItems)} startupItems={fixtureItems} />);
+    const collection = [...host.querySelectorAll<HTMLButtonElement>(".literature-collection")].find((button) => button.textContent?.includes("疑似重复"));
+    await act(async () => {
+      collection?.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await vi.waitFor(() => expect(host.querySelectorAll(".literature-duplicate-candidate-row")).toHaveLength(2));
+    await act(async () => host.querySelector<HTMLInputElement>('input[aria-label="全选或取消全选疑似重复"]')?.click());
+    const ignoreButton = [...host.querySelectorAll<HTMLButtonElement>(".literature-duplicate-bulk button")].find((button) => button.textContent?.includes("批量忽略"))!;
+    expect(ignoreButton.disabled).toBe(false);
+    await act(async () => {
+      ignoreButton.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/literature/duplicates/ignore", expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({ ids: ["duplicate-1", "duplicate-2"] }),
+    })));
+    await vi.waitFor(() => expect(host.querySelectorAll(".literature-duplicate-candidate-row")).toHaveLength(0));
+    expect(fixtureItems.filter((item) => item.id.startsWith("duplicate-")).map((item) => item.status)).toEqual(["ignored", "ignored"]);
+    expect(host.textContent).toContain("已忽略 2 条疑似重复记录；可在“暂不处理”中恢复。");
+  });
+
   it("queues only the highlighted Zotero paper for deep analysis", async () => {
     const host = await mount(<LiteraturePageV2 startupRuntime={createRuntime(fixtureItems)} startupItems={fixtureItems} />);
     const selected = [...host.querySelectorAll<HTMLButtonElement>(".literature-item-row")].find((button) => button.textContent?.includes("A conceptual multi-laser"));
@@ -338,7 +461,7 @@ describe("文献 V2 页面", () => {
     expect(host.querySelector(".literature-sidebar")).not.toBeNull();
     expect(host.querySelector(".literature-list-panel")).not.toBeNull();
     expect(host.querySelector(".literature-detail-panel")).not.toBeNull();
-    expect(host.textContent).toContain("我的文库");
+    expect(host.textContent).toContain("本地 + Zotero");
     expect(host.textContent).toContain("待归档");
     expect(host.textContent).toContain("A conceptual multi-laser integration technology");
     expect(host.textContent).toContain("摘要");
@@ -373,13 +496,14 @@ describe("文献 V2 页面", () => {
     const titleBlock = host.querySelector<HTMLElement>(".literature-item-row .literature-item-title");
     expect(titleBlock).not.toBeNull();
     act(() => titleBlock?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })));
-    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/literature/items/local-1/pdf", expect.objectContaining({ cache: "no-store" })));
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-      await Promise.resolve();
-      await Promise.resolve();
-    });
+    await settleReaderImport();
+    await vi.waitFor(() => expect(mockPdfGetDocument).toHaveBeenCalledWith(expect.objectContaining({
+      url: "/api/literature/items/local-1/pdf",
+      rangeChunkSize: 64 * 1024,
+      disableRange: false,
+      disableStream: true,
+      disableAutoFetch: true,
+    })));
     expect(document.body.querySelector('[role="dialog"][aria-labelledby="literature-reader-title"]')).not.toBeNull();
     expect(fetchMock).not.toHaveBeenCalledWith("/api/literature/items/local-1/open-document", expect.anything());
   });
@@ -392,13 +516,8 @@ describe("文献 V2 页面", () => {
     const titleBlock = row?.querySelector<HTMLElement>(".literature-item-title");
     expect(titleBlock).not.toBeNull();
     act(() => titleBlock?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })));
-    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/literature/items/zotero-2/pdf", expect.objectContaining({ cache: "no-store" })));
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-      await Promise.resolve();
-      await Promise.resolve();
-    });
+    await settleReaderImport();
+    await vi.waitFor(() => expect(mockPdfGetDocument).toHaveBeenCalledWith(expect.objectContaining({ url: "/api/literature/items/zotero-2/pdf", disableStream: true, disableAutoFetch: true })));
     expect(document.body.querySelector('[role="dialog"][aria-labelledby="literature-reader-title"]')).not.toBeNull();
     expect(fetchMock).not.toHaveBeenCalledWith("/api/literature/items/zotero-2/open-document", expect.anything());
   });
@@ -411,8 +530,8 @@ describe("文献 V2 页面", () => {
 
     const titleBlock = host.querySelector<HTMLElement>(".literature-item-row .literature-item-title");
     act(() => titleBlock?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })));
-    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/literature/items/local-1/pdf", expect.objectContaining({ cache: "no-store" })));
-    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    await settleReaderImport();
+    await vi.waitFor(() => expect(mockPdfGetDocument).toHaveBeenCalledWith(expect.objectContaining({ url: "/api/literature/items/local-1/pdf" })));
 
     expect(document.body.textContent).toContain("选区翻译已停用");
     expect(fetchMock).not.toHaveBeenCalledWith("/api/hdd/providers", expect.anything());
@@ -643,9 +762,10 @@ describe("文献 V2 页面", () => {
     const localRow = host.querySelector<HTMLButtonElement>('.literature-item-row[aria-selected="true"]');
     act(() => localRow?.click());
     act(() => [...host.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent?.includes("确认入库"))?.click());
-    expect(host.querySelector('[role="dialog"]')?.textContent).toContain("确认写入 Zotero");
+    const importDialog = document.body.querySelector<HTMLDivElement>('.literature-import-backdrop [role="dialog"]');
+    expect(importDialog?.textContent).toContain("确认写入 Zotero");
     await act(async () => {
-      host.querySelector<HTMLButtonElement>('[role="dialog"] button[type="submit"]')?.click();
+      importDialog?.querySelector<HTMLButtonElement>('button[type="submit"]')?.click();
       await Promise.resolve();
     });
     await vi.waitFor(() => expect(host.textContent).toContain("已与 Zotero 同步"));

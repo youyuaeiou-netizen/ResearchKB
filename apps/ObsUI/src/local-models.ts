@@ -19,7 +19,7 @@ export type LocalModelDownload = {
   output: string | null;
 };
 
-export const LOCAL_MODEL_CONTEXT_LENGTHS = [65_536, 131_072, 204_800] as const;
+export const LOCAL_MODEL_CONTEXT_LENGTHS = [8_192, 16_384, 32_768, 65_536, 131_072, 204_800] as const;
 export const LOCAL_MODEL_OUTPUT_LENGTHS = [4_096, 8_192, 16_384] as const;
 export const LOCAL_MODEL_THINKING_LEVELS = ["off", "low", "medium", "high"] as const;
 
@@ -74,8 +74,8 @@ export type LocalModelSettings = {
 };
 
 export const DEFAULT_LOCAL_MODEL_SETTINGS: LocalModelSettings = {
-  contextLength: 65_536,
-  maxOutputTokens: 8_192,
+  contextLength: 8_192,
+  maxOutputTokens: 4_096,
   temperature: 0.2,
   topP: 0.9,
   topK: 40,
@@ -183,6 +183,12 @@ export function parseLocalModelSettings(value: unknown): LocalModelSettings | nu
     }
   }
   return normalized;
+}
+
+/** Accept older saved settings with missing fields; API writes still use the strict parser. */
+export function parsePersistedLocalModelSettings(value: unknown): LocalModelSettings | null {
+  if (!isRecord(value) || !Object.keys(DEFAULT_LOCAL_MODEL_SETTINGS).some((key) => key in value)) return null;
+  return parseLocalModelSettings({ ...DEFAULT_LOCAL_MODEL_SETTINGS, ...value });
 }
 
 export function parseLocalModelState(payload: unknown): LocalModelState | null {

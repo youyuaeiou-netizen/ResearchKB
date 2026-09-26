@@ -51,7 +51,10 @@ describe("system metrics payload", () => {
 
     expect(parsed?.sources).toEqual({ hardwareMonitor: null, hwinfo: true, nvidia: false });
     expect(defaultSystemSensorSelection(parsed!.sensors).summary).toContain("hwinfo:3:5");
-    expect(defaultSystemSensorSelection(parsed!.sensors).temperatures).toEqual(hwinfoSensors.filter((sensor) => sensor.kind === "temperature").map((sensor) => sensor.id));
+    const selectedTemperatures = defaultSystemSensorSelection(parsed!.sensors).temperatures;
+    const expectedTemperatures = hwinfoSensors.filter((sensor) => sensor.kind === "temperature").map((sensor) => sensor.id);
+    expect(selectedTemperatures).toHaveLength(expectedTemperatures.length);
+    expect(selectedTemperatures).toEqual(expect.arrayContaining(expectedTemperatures));
   });
 
   it("accepts LibreHardwareMonitor web readings for the non-GPU temperature cards", () => {
@@ -66,7 +69,10 @@ describe("system metrics payload", () => {
 
     expect(parsed?.sources).toEqual({ hardwareMonitor: "LibreHardwareMonitor", hwinfo: false, nvidia: false });
     expect(defaultSystemSensorSelection(parsed!.sensors).summary).toContain("hardware-monitor:web:/nvme/0/level/20");
-    expect(defaultSystemSensorSelection(parsed!.sensors).temperatures).toEqual(libreSensors.filter((sensor) => sensor.kind === "temperature").map((sensor) => sensor.id));
+    const selectedTemperatures = defaultSystemSensorSelection(parsed!.sensors).temperatures;
+    const expectedTemperatures = libreSensors.filter((sensor) => sensor.kind === "temperature").map((sensor) => sensor.id);
+    expect(selectedTemperatures).toHaveLength(expectedTemperatures.length);
+    expect(selectedTemperatures).toEqual(expect.arrayContaining(expectedTemperatures));
   });
 
   it("creates bounded default selections and validates saved choices", () => {

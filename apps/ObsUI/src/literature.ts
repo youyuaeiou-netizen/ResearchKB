@@ -1,8 +1,16 @@
 export const LITERATURE_DATABASE_ROOT = "C:\\ObsUILiteratureDB";
-export const LOCAL_MODEL_ROOT = "C:\\AIModels";
-export const DEFAULT_LOCAL_MODEL_FAMILY = "qwen3.5:9b";
-export const DEFAULT_LOCAL_MODEL_PROFILE = "64k";
-export const DEFAULT_LOCAL_MODEL = `${DEFAULT_LOCAL_MODEL_FAMILY}-${DEFAULT_LOCAL_MODEL_PROFILE}`;
+export function getLiteratureDatabaseRoot() {
+  const configured = typeof process === "undefined" ? "" : process.env.OBSUI_LITERATURE_DATABASE_ROOT?.trim() ?? "";
+  return configured || LITERATURE_DATABASE_ROOT;
+}
+export function getLocalModelRoot() {
+  const configured = typeof process === "undefined" ? "" : process.env.OBSUI_OLLAMA_MODEL_ROOT?.trim() ?? "";
+  return configured || "C:\\AIModels";
+}
+
+export const DEFAULT_LOCAL_MODEL_FAMILY = "qwen3:4b";
+export const DEFAULT_LOCAL_MODEL_PROFILE = "default";
+export const DEFAULT_LOCAL_MODEL = DEFAULT_LOCAL_MODEL_FAMILY;
 
 export type LiteratureStatus =
   | "detected"
@@ -25,6 +33,18 @@ export type LiteratureZoteroRef = {
   serverId: string;
   itemKey: string;
   attachmentKey: string | null;
+};
+
+export type LiteratureLocalCopy = {
+  relativePath: string;
+  folderName: string;
+  fileName: string;
+  size: number;
+  mtimeMs: number;
+  sha256: string;
+  /** Zotero's attachment API exposes an MD5 digest; used only to link exact local PDFs. */
+  md5?: string | null;
+  sourceAvailability: LiteratureSourceAvailability;
 };
 
 export type LiteratureDuplicateCandidate = {
@@ -61,6 +81,10 @@ export type LiteratureRecord = {
   size: number;
   mtimeMs: number;
   sha256: string;
+  /** Backward-compatible digest for exact Zotero attachment matching. */
+  md5?: string | null;
+  localCopies: LiteratureLocalCopy[];
+  recordAliases: string[];
   status: LiteratureStatus;
   sourceAvailability: LiteratureSourceAvailability;
   /** Distinguishes a deliberate deferral from legacy remove tombstones. */
@@ -144,6 +168,7 @@ export type LiteratureUnifiedItem = {
   analysisSource: LiteratureAnalysisSource;
   evidence: string[];
   relativePath: string | null;
+  localFiles?: Array<{ relativePath: string; fileName: string; sourceAvailability: LiteratureSourceAvailability }>;
   folderName: string | null;
   fileName: string | null;
   size: number | null;
@@ -174,6 +199,7 @@ export type LiteratureRuntimeStatus = {
   zotero: {
     connected: boolean;
     authorized: boolean;
+    writeSupported: boolean;
     serverId: string | null;
     version: string | null;
     error: string | null;
@@ -377,9 +403,11 @@ export function filterLiteratureItems(items: readonly LiteratureUnifiedItem[], c
     // record, so a later scan can create it again when the file returns.
     const inIgnoredCollection = collectionId === "ignored" && item.status === "ignored";
     const inMissingCollection = collectionId === "missing" && item.source !== "zotero" && item.sourceAvailability === "missing";
-    if (item.status === "ignored" && !inIgnoredCollection) return false;
+    const inZoteroCollection = collectionId === "zotero" && Boolean(item.zoteroItemKey);
+    if (item.status === "ignored" && !inIgnoredCollection && !inZoteroCollection) return false;
     const inCollection = inIgnoredCollection
       || inMissingCollection
+      || inZoteroCollection
       || collectionId === "library"
       || collectionId === "pending" && ["detected", "analyzing", "ready", "matched", "conflict", "failed", "partial-failed"].includes(item.status)
       || collectionId === "recent" && item.updatedAt > Date.now() - 30 * 24 * 60 * 60 * 1000

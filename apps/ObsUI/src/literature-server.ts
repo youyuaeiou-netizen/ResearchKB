@@ -3,6 +3,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { existsSync } from "node:fs";
 import { watch, type FSWatcher } from "node:fs";
 import { createReadStream } from "node:fs";
+import { pipeline } from "node:stream/promises";
 import { access, lstat, mkdir, readFile, readdir, realpath, rename, stat, writeFile } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { homedir } from "node:os";
@@ -17,8 +18,8 @@ import {
   DEFAULT_LOCAL_MODEL,
   DEFAULT_LOCAL_MODEL_FAMILY,
   DEFAULT_LOCAL_MODEL_PROFILE,
-  LITERATURE_DATABASE_ROOT,
-  LOCAL_MODEL_ROOT,
+  getLiteratureDatabaseRoot,
+  getLocalModelRoot,
   filterLiteratureItems,
   formatLiteratureAuthors,
   normalizeDoi,
@@ -29,6 +30,7 @@ import {
   type LiteratureFolderSelectionResponse,
   type LiteratureImportOperation,
   type LiteratureItemsResponse,
+  type LiteratureLocalCopy,
   type LiteratureOrganizationPlanItem,
   type LiteratureOrganizationPlanStatus,
   type LiteratureOrganizationPreview,
@@ -47,17 +49,18 @@ import {
   type LiteratureTask,
   type LiteratureUnifiedItem,
 } from "./literature";
-import { DEFAULT_LOCAL_MODEL_SETTINGS, localModelThinkingFor, normalizeLocalModelSettings, type LocalModelSettings } from "./local-models";
+import { DEFAULT_LOCAL_MODEL_SETTINGS, localModelThinkingFor, normalizeLocalModelSettings, parsePersistedLocalModelSettings, type LocalModelSettings } from "./local-models";
 import { buildLiteratureReport, literatureReportRelativePath, OBSUI_REPORT_MARKER_PREFIX } from "./literature-reports";
 import { DEEP_REPORT_FOLDER, isUntouchedDeepReport, normalizeDeepAnalysis, renderDeepReport, sealDeepReport, splitPageText } from "./literature-deep-analysis";
+import { readJsonState, writeJsonState } from "./json-state";
 
-const databaseStatePath = join(LITERATURE_DATABASE_ROOT, "literature-state.json");
-const settingsPath = join(LITERATURE_DATABASE_ROOT, "settings.json");
-const taskStatePath = join(LITERATURE_DATABASE_ROOT, "literature-tasks.json");
-const discussionStatePath = join(LITERATURE_DATABASE_ROOT, "literature-discussions.json");
-const localModelSettingsPath = join(LITERATURE_DATABASE_ROOT, "local-model-settings.json");
+const databaseStatePath = () => join(getLiteratureDatabaseRoot(), "literature-state.json");
+const settingsPath = () => join(getLiteratureDatabaseRoot(), "settings.json");
+const taskStatePath = () => join(getLiteratureDatabaseRoot(), "literature-tasks.json");
+const discussionStatePath = () => join(getLiteratureDatabaseRoot(), "literature-discussions.json");
+const localModelSettingsPath = () => join(getLiteratureDatabaseRoot(), "local-model-settings.json");
 const localAppDataPath = process.env.LOCALAPPDATA?.trim() || join(homedir(), "AppData", "Local");
-const credentialsPath = join(LITERATURE_DATABASE_ROOT, "credentials.dat");
+const credentialsPath = () => join(getLiteratureDatabaseRoot(), "credentials.dat");
 const zoteroBaseUrl = "http://127.0.0.1:23119/api/";
 const ollamaBaseUrl = "http://127.0.0.1:11434";
 const systemWindowsPowerShell = join(process.env.SystemRoot?.trim() || "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
@@ -71,7 +74,7 @@ const configuredWindowsPowerShell = process.env.OBSUI_WINDOWS_POWERSHELL_PATH?.t
 const windowsPowerShell = process.platform === "win32" && (!configuredWindowsPowerShell || /(?:^|[\\/])appdata[\\/]local[\\/]microsoft[\\/]windowsapps[\\/]powershell\.exe$/i.test(configuredWindowsPowerShell) || /(?:^|[\\/])windowsapps[\\/]microsoft\.powershell_[^\\/]+[\\/](?:pwsh|powershell)\.exe$/i.test(configuredWindowsPowerShell))
   ? systemWindowsPowerShell
   : configuredWindowsPowerShell || "powershell.exe";
-const ollamaExecutable = process.env.OBSUI_OLLAMA_PATH?.trim() || "ollama.exe";
+const ollamaExecutable = () => process.env.OBSUI_OLLAMA_PATH?.trim() || "ollama.exe";
 const maxBodyBytes = 128 * 1024;
 const maxPdfBytes = 4 * 1024 * 1024 * 1024;
 const maxScanFiles = 5_000;
@@ -89,6 +92,16 @@ const maxLiteratureTasks = 100;
 const obsUiHashPrefix = "ObsUI-Source-SHA256:";
 const interruptedAnalysisMessage = "上一次分析未完成，请重新分析。";
 const explorerOpenPromises = new Map<string, Promise<void>>();
+const zoteroItemsCacheTtlMs = 10_000;
+let zoteroItemsCache: { result: ZoteroItemCollection; expiresAt: number } | null = null;
+let zoteroItemsRequestPromise: Promise<ZoteroItemCollection> | null = null;
+let zoteroItemsCacheGeneration = 0;
+
+function invalidateZoteroItemsCache() {
+  zoteroItemsCacheGeneration += 1;
+  zoteroItemsCache = null;
+  zoteroItemsRequestPromise = null;
+}
 
 type RecordLike = Record<string, unknown>;
 type StoredState = { version: 2; records: LiteratureRecord[]; updatedAt: number };
@@ -96,6 +109,7 @@ type StoredTaskState = { version: 1; tasks: LiteratureTask[] };
 type StoredDiscussionState = { version: 1; discussions: Record<string, LiteratureDiscussionMessage[]> };
 type StoredCredentials = { version: 1; serverId: string; encryptedKey: string; remember: boolean; updatedAt: number };
 type ZoteroItem = { key: string; version: number; data: RecordLike; meta: RecordLike };
+type ZoteroItemCollection = { serverId: string | null; items: ZoteroItem[] };
 type ModelJob = { id: string; modelName: string; status: "running" | "completed" | "failed"; output: string; startedAt: number; finishedAt: number | null };
 type LiteratureAnalysisOptions = {
   evidenceMode?: "text" | "vision";
@@ -122,6 +136,7 @@ type LiteraturePluginState = {
   folderPickerPromise: Promise<LiteratureFolderSelectionResponse> | null;
   organizationPromise: Promise<unknown> | null;
   stateWriteTail: Promise<void>;
+  duplicateMutationTail: Promise<void>;
   importTail: Promise<void>;
   taskWriteTail: Promise<void>;
   discussionWriteTail: Promise<void>;
@@ -142,8 +157,17 @@ function asRecord(value: unknown): RecordLike | null {
   return value && typeof value === "object" && !Array.isArray(value) ? value as RecordLike : null;
 }
 
+function hasSupportedVersion(value: RecordLike | null, latest: number) {
+  return value !== null && (value.version === undefined || (typeof value.version === "number" && Number.isInteger(value.version) && value.version >= 1 && value.version <= latest));
+}
+
 function asString(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function normalizeMd5(value: unknown) {
+  const md5 = asString(value)?.toLocaleLowerCase();
+  return md5 && /^[a-f0-9]{32}$/.test(md5) ? md5 : null;
 }
 
 function asNullableString(value: unknown) {
@@ -201,20 +225,8 @@ async function readJsonBody(request: IncomingMessage): Promise<unknown> {
   return text.trim() ? JSON.parse(text) : {};
 }
 
-async function readJsonFile<T>(path: string, fallback: T): Promise<T> {
-  try {
-    return JSON.parse(await readFile(path, "utf8")) as T;
-  } catch {
-    return fallback;
-  }
-}
-
-async function writeJsonAtomically(path: string, value: unknown) {
-  await mkdir(dirname(path), { recursive: true });
-  const temporaryPath = `${path}.${process.pid}.${randomUUID()}.tmp`;
-  await writeFile(temporaryPath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
-  await rename(temporaryPath, path);
-}
+const readJsonFile = readJsonState;
+const writeJsonAtomically = writeJsonState;
 
 function normalizeLiteratureTask(value: unknown): LiteratureTask | null {
   const record = asRecord(value);
@@ -337,7 +349,7 @@ export function normalizeSettings(value: unknown): LiteratureSettings {
 
 function normalizeStoredState(value: unknown): StoredState {
   const record = asRecord(value);
-  const records = Array.isArray(record?.records) ? record.records.map(normalizeRecord).filter((item): item is LiteratureRecord => item !== null) : [];
+  const records = coalesceLocalLiteratureRecords(Array.isArray(record?.records) ? record.records.map(normalizeRecord).filter((item): item is LiteratureRecord => item !== null) : []);
   return { version: 2, records, updatedAt: asNumber(record?.updatedAt) ?? Date.now() };
 }
 
@@ -368,6 +380,9 @@ export function normalizeRecord(value: unknown): LiteratureRecord | null {
     size: Math.max(0, Math.round(asNumber(record?.size) ?? 0)),
     mtimeMs: Math.max(0, asNumber(record?.mtimeMs) ?? 0),
     sha256,
+    md5: normalizeMd5(record?.md5),
+    localCopies: readLocalCopies(record?.localCopies, relativePath),
+    recordAliases: [...new Set(readStringArray(record?.recordAliases).filter((alias) => alias !== id))],
     status,
     sourceAvailability,
     ignoredReason,
@@ -531,7 +546,7 @@ async function validateInboxPath(value: string | null) {
   if (value === null) return null;
   if (!isAbsolute(value)) throw new Error("文献目录必须是绝对路径。");
   const resolved = await resolveExistingPath(resolve(value));
-  const protectedPaths = [...await configuredZoteroDataRoots(), LOCAL_MODEL_ROOT, LITERATURE_DATABASE_ROOT, localAppDataPath];
+  const protectedPaths = [...await configuredZoteroDataRoots(), getLocalModelRoot(), getLiteratureDatabaseRoot(), localAppDataPath];
   const protectedRoots = await Promise.all(protectedPaths.map(async (root) => realpath(root).catch(() => resolve(root))));
   if (protectedRoots.some((root) => isPathInside(resolved, root))) throw new Error("文献目录不能指向 Zotero、模型或 ObsUI 数据目录。");
   const metadata = await stat(resolved);
@@ -543,7 +558,7 @@ async function validateObsidianVaultPath(value: string | null) {
   if (value === null) return null;
   if (!isAbsolute(value)) throw new Error("Obsidian Vault 必须是绝对路径。");
   const resolved = await resolveExistingPath(resolve(value));
-  const protectedRoots = await Promise.all([LITERATURE_DATABASE_ROOT, LOCAL_MODEL_ROOT].map(async (root) => realpath(root).catch(() => resolve(root))));
+  const protectedRoots = await Promise.all([getLiteratureDatabaseRoot(), getLocalModelRoot()].map(async (root) => realpath(root).catch(() => resolve(root))));
   if (protectedRoots.some((root) => isPathInside(resolved, root))) throw new Error("Obsidian Vault 不能指向 ObsUI 数据目录或模型目录。");
   const metadata = await stat(resolved);
   if (!metadata.isDirectory()) throw new Error("Obsidian Vault 不是文件夹。");
@@ -559,6 +574,21 @@ async function hashFile(path: string, algorithm: "sha256" | "md5") {
     handle.destroy();
   }
   return hash.digest("hex");
+}
+
+async function hashFileDigests(path: string) {
+  const sha256 = createHash("sha256");
+  const md5 = createHash("md5");
+  const handle = createReadStream(path);
+  try {
+    for await (const chunk of handle) {
+      sha256.update(chunk as Buffer);
+      md5.update(chunk as Buffer);
+    }
+  } finally {
+    handle.destroy();
+  }
+  return { sha256: sha256.digest("hex"), md5: md5.digest("hex") };
 }
 
 export function literatureFolderNameFromRelativePath(value: string) {
@@ -893,7 +923,7 @@ function requestedOrganizationIds(value: unknown) {
   return new Set(payload.ids.map(asString).filter((id): id is string => id !== null));
 }
 
-function createRecord(file: { path: string; relativePath: string; folderName: string; fileName: string; size: number; mtimeMs: number }, sha256: string): LiteratureRecord {
+function createRecord(file: { path: string; relativePath: string; folderName: string; fileName: string; size: number; mtimeMs: number }, sha256: string, md5: string | null = null): LiteratureRecord {
   const now = Date.now();
   return {
     id: `local-${randomUUID()}`,
@@ -904,6 +934,9 @@ function createRecord(file: { path: string; relativePath: string; folderName: st
     size: file.size,
     mtimeMs: file.mtimeMs,
     sha256,
+    md5,
+    localCopies: [],
+    recordAliases: [],
     status: "detected",
     sourceAvailability: "present",
     ignoredReason: null,
@@ -929,19 +962,63 @@ function createRecord(file: { path: string; relativePath: string; folderName: st
   };
 }
 
-export function updateRecordForFile(record: LiteratureRecord, file: { path: string; relativePath: string; folderName: string; fileName: string; size: number; mtimeMs: number }, sha256: string): { record: LiteratureRecord; changed: boolean } {
+function localCopyForFile(file: { path: string; relativePath: string; folderName: string; fileName: string; size: number; mtimeMs: number }, sha256: string, md5: string | null = null): LiteratureLocalCopy {
+  return { relativePath: file.relativePath, folderName: file.folderName, fileName: file.fileName, size: file.size, mtimeMs: file.mtimeMs, sha256, md5, sourceAvailability: "present" };
+}
+
+function attachLocalCopy(record: LiteratureRecord, file: { path: string; relativePath: string; folderName: string; fileName: string; size: number; mtimeMs: number }, sha256: string, md5: string | null = null): LiteratureRecord {
+  const copy = localCopyForFile(file, sha256, md5);
+  if (normalizedRelativeLiteraturePath(record.relativePath) === normalizedRelativeLiteraturePath(copy.relativePath)) {
+    return updateRecordForFile(record, file, sha256, md5).record;
+  }
+  const localCopies = new Map(record.localCopies.map((candidate) => [normalizedRelativeLiteraturePath(candidate.relativePath), candidate]));
+  localCopies.set(normalizedRelativeLiteraturePath(copy.relativePath), copy);
+  return { ...record, localCopies: [...localCopies.values()], md5: record.md5 ?? md5, sourceAvailability: "present", updatedAt: Date.now() };
+}
+
+export function updateRecordForFile(record: LiteratureRecord, file: { path: string; relativePath: string; folderName: string; fileName: string; size: number; mtimeMs: number }, sha256: string, md5: string | null = record.md5 ?? null): { record: LiteratureRecord; changed: boolean } {
   const sameSource = record.sha256 === sha256 && normalizedPath(record.sourcePath) === normalizedPath(file.path);
+  const sameRelativeSource = record.sha256 === sha256 && normalizedRelativeLiteraturePath(record.relativePath) === normalizedRelativeLiteraturePath(file.relativePath);
+  if (sameRelativeSource && !sameSource) {
+    const legacyRemoveTombstone = record.status === "ignored" && record.ignoredReason === "legacy-remove";
+    const changed = record.sourcePath !== resolve(file.path) || !sameFileMetadata(record, file) || record.folderName !== file.folderName || record.fileName !== file.fileName || record.md5 !== md5 || record.status === "missing" || record.sourceAvailability === "missing" || legacyRemoveTombstone;
+    if (!changed) return { record, changed: false };
+    return {
+      record: {
+        ...record,
+        sourcePath: resolve(file.path),
+        relativePath: file.relativePath,
+        folderName: file.folderName,
+        fileName: file.fileName,
+        size: file.size,
+        mtimeMs: file.mtimeMs,
+        md5,
+        sourceAvailability: "present",
+        status: record.status === "missing" || legacyRemoveTombstone ? record.zotero?.itemKey ? "imported" : restoredLiteratureStatus(record) : record.status,
+        ignoredReason: legacyRemoveTombstone ? null : record.ignoredReason,
+        updatedAt: Date.now(),
+      },
+      changed: true,
+    };
+  }
+  if (record.sha256 === sha256 && normalizedPath(record.sourcePath) !== normalizedPath(file.path)) {
+    const copy = localCopyForFile(file, sha256, md5);
+    const copies = new Map(record.localCopies.map((candidate) => [normalizedRelativeLiteraturePath(candidate.relativePath), candidate]));
+    copies.set(normalizedRelativeLiteraturePath(copy.relativePath), copy);
+    return { record: { ...record, md5: record.md5 ?? md5, localCopies: [...copies.values()], sourceAvailability: "present", updatedAt: Date.now() }, changed: true };
+  }
   const unchanged = sameSource && record.size === file.size && Math.round(record.mtimeMs) === Math.round(file.mtimeMs);
   const legacyRemoveTombstone = record.status === "ignored" && record.ignoredReason === "legacy-remove" && sameSource;
   if (unchanged) {
     const locationMetadataChanged = record.relativePath !== file.relativePath || record.folderName !== file.folderName || record.fileName !== file.fileName;
-    if (record.status !== "missing" && record.sourceAvailability !== "missing" && !legacyRemoveTombstone && !locationMetadataChanged) return { record, changed: false };
+    if (record.status !== "missing" && record.sourceAvailability !== "missing" && !legacyRemoveTombstone && !locationMetadataChanged && record.md5 === md5) return { record, changed: false };
     return {
       record: {
         ...record,
         relativePath: file.relativePath,
         folderName: file.folderName,
         fileName: file.fileName,
+        md5,
         status: record.status === "missing" || legacyRemoveTombstone ? record.zotero?.itemKey ? "imported" : restoredLiteratureStatus(record) : record.status,
         sourceAvailability: "present",
         ignoredReason: legacyRemoveTombstone ? null : record.ignoredReason === "manual" ? "manual" : null,
@@ -962,6 +1039,7 @@ export function updateRecordForFile(record: LiteratureRecord, file: { path: stri
         size: file.size,
         mtimeMs: file.mtimeMs,
         sha256,
+        md5,
         status: record.zotero?.itemKey ? "imported" : restoredLiteratureStatus(record),
         sourceAvailability: "present",
         ignoredReason: null,
@@ -980,6 +1058,9 @@ export function updateRecordForFile(record: LiteratureRecord, file: { path: stri
     size: file.size,
     mtimeMs: file.mtimeMs,
     sha256,
+    md5,
+    localCopies: [],
+    recordAliases: [],
     status: "detected",
     sourceAvailability: "present",
     ignoredReason: null,
@@ -1271,7 +1352,7 @@ async function readOllamaModels() {
       models: payload.models.map((candidate) => {
         const model = asRecord(candidate);
         return { name: asString(model?.name), size: asNumber(model?.size), modifiedAt: asEpochMilliseconds(model?.modified_at) };
-      }).filter((model): model is { name: string; size: number | null; modifiedAt: number | null } => model.name !== null && model.name !== "qwen3.5:9b"),
+      }).filter((model): model is { name: string; size: number | null; modifiedAt: number | null } => model.name !== null),
       error: null,
     };
   } catch (error) {
@@ -1288,11 +1369,17 @@ export function groupLiteratureModels(models: readonly { name: string; size: num
     family.profiles.push({ profile: selection.profile, runtimeTag: selection.runtimeTag, contextLength: /^\d+k$/i.test(selection.profile) ? Number.parseInt(selection.profile, 10) * 1024 : null, size: model.size, modifiedAt: model.modifiedAt });
     families.set(selection.family, family);
   }
-  return [...families.values()].map((family) => ({ ...family, profiles: family.profiles.sort((left, right) => (left.contextLength ?? 0) - (right.contextLength ?? 0)) })).sort((left, right) => left.name.localeCompare(right.name));
+  return [...families.values()].map((family) => {
+    const hasExplicitContextProfiles = family.profiles.some((profile) => profile.profile !== "default");
+    const profiles = hasExplicitContextProfiles ? family.profiles.filter((profile) => profile.profile !== "default") : family.profiles;
+    return { ...family, profiles: profiles.sort((left, right) => (left.contextLength ?? 0) - (right.contextLength ?? 0)) };
+  }).sort((left, right) => left.name.localeCompare(right.name));
 }
 
 async function readLocalModelSettings(): Promise<LocalModelSettings> {
-  return normalizeLocalModelSettings(await readJsonFile(localModelSettingsPath, DEFAULT_LOCAL_MODEL_SETTINGS));
+  const settings = parsePersistedLocalModelSettings(await readJsonFile(localModelSettingsPath(), DEFAULT_LOCAL_MODEL_SETTINGS));
+  if (!settings) throw new Error("本地模型设置格式无效。");
+  return settings;
 }
 
 async function runOllamaStructuredChat(modelName: string, prompt: string, images: string[], format: unknown, taskSignal?: AbortSignal, requestOptions: OllamaRequestOptions = {}) {
@@ -1422,14 +1509,79 @@ async function zoteroRoot() {
   const response = await fetch(zoteroBaseUrl, { signal: AbortSignal.timeout(4_000) });
   if (!response.ok) throw new Error(`Zotero 本地 API 返回 ${response.status}。`);
   const serverId = response.headers.get("Zotero-Server-ID");
-  if (!serverId) throw new Error("Zotero 没有返回 Server ID。");
   return { serverId, version: response.headers.get("Zotero-API-Version") };
+}
+
+export type LiteratureDuplicateMergeRequest = { id: string; itemKey: string };
+
+export function mergeDuplicateLiteratureRecords(records: readonly LiteratureRecord[], requests: readonly LiteratureDuplicateMergeRequest[], serverId: string, zoteroItems: readonly ZoteroItem[]): LiteratureRecord[] {
+  if (!requests.length || requests.length > 200) throw new Error("批量合并条目数量无效。");
+  const ids = new Set<string>();
+  const recordIds = new Set<string>();
+  for (const request of requests) {
+    if (!request.id || !request.itemKey || !/^[A-Za-z0-9]+$/.test(request.itemKey) || ids.has(request.id)) throw new Error("批量合并候选格式无效或包含重复记录。");
+    ids.add(request.id);
+    const record = records.find((item) => item.id === request.id || item.recordAliases.includes(request.id));
+    if (!record || record.status !== "conflict" || !record.duplicateCandidates.some((candidate) => candidate.itemKey === request.itemKey)) throw new Error("疑似重复状态已变化，请刷新列表后重试。");
+    if (recordIds.has(record.id)) throw new Error("批量合并列表重复指向同一文献记录。");
+    recordIds.add(record.id);
+    if (!zoteroItems.some((item) => item.key === request.itemKey && !["attachment", "note"].includes(asString(item.data.itemType) ?? ""))) throw new Error("所选 Zotero 条目已不存在，请刷新列表后重试。");
+    if (record.zotero && (record.zotero.serverId !== serverId || record.zotero.itemKey !== request.itemKey)) throw new Error("该文献已关联其他 Zotero 条目，请先刷新列表确认状态。");
+  }
+  const now = Date.now();
+  return records.map((record) => {
+    const request = requests.find((candidate) => candidate.id === record.id || record.recordAliases.includes(candidate.id));
+    if (!request) return record;
+    return {
+      ...record,
+      zotero: { serverId, itemKey: request.itemKey, attachmentKey: null },
+      duplicateCandidates: [],
+      status: "matched",
+      ignoredReason: null,
+      error: null,
+      updatedAt: now,
+    };
+  });
+}
+
+export function ignoreDuplicateLiteratureRecords(records: readonly LiteratureRecord[], ids: readonly string[]): LiteratureRecord[] {
+  if (!ids.length || ids.length > 200) throw new Error("批量忽略条目数量无效。");
+  const uniqueIds = new Set(ids);
+  if (uniqueIds.size !== ids.length || ids.some((id) => !id)) throw new Error("批量忽略列表包含空值或重复记录。");
+  const recordIds = new Set<string>();
+  for (const id of ids) {
+    const record = records.find((item) => item.id === id || item.recordAliases.includes(id));
+    if (!record || record.status !== "conflict" || !record.duplicateCandidates.length) throw new Error("疑似重复状态已变化，请刷新列表后重试。");
+    if (recordIds.has(record.id)) throw new Error("批量忽略列表重复指向同一文献记录。");
+    recordIds.add(record.id);
+  }
+  const now = Date.now();
+  return records.map((record) => ids.some((id) => record.id === id || record.recordAliases.includes(id))
+    ? { ...record, status: "ignored", ignoredReason: "manual", error: null, updatedAt: now }
+    : record);
+}
+
+function enqueueDuplicateMutation<T>(pluginState: LiteraturePluginState, task: () => Promise<T>) {
+  const operation = pluginState.duplicateMutationTail.catch(() => undefined).then(task);
+  pluginState.duplicateMutationTail = operation.then(() => undefined, () => undefined);
+  return operation;
+}
+
+async function persistRecordMutation(pluginState: LiteraturePluginState, nextRecords: LiteratureRecord[]) {
+  const previousRecords = pluginState.store.records;
+  pluginState.store.records = nextRecords;
+  try {
+    await persistStore(pluginState);
+  } catch (error) {
+    pluginState.store.records = previousRecords;
+    throw error;
+  }
 }
 
 async function zoteroConnectionStatus() {
   return zoteroRoot()
-    .then(async (root) => ({ connected: true, authorized: Boolean((await readCredentials())?.serverId === root.serverId), serverId: root.serverId, version: root.version, error: null }))
-    .catch((error) => ({ connected: false, authorized: false, serverId: null, version: null, error: safeError(error) }));
+    .then(async (root) => ({ connected: true, authorized: Boolean(root.serverId && (await readCredentials())?.serverId === root.serverId), writeSupported: Boolean(root.serverId), serverId: root.serverId, version: root.version, error: null }))
+    .catch((error) => ({ connected: false, authorized: false, writeSupported: false, serverId: null, version: null, error: safeError(error) }));
 }
 
 async function readCredentialsFrom(path: string) {
@@ -1444,19 +1596,20 @@ async function readCredentialsFrom(path: string) {
 }
 
 async function readCredentials() {
-  return readCredentialsFrom(credentialsPath);
+  return readCredentialsFrom(credentialsPath());
 }
 
 async function clearCredentials() {
-  await writeJsonAtomically(credentialsPath, { version: 1, serverId: "", encryptedKey: "", remember: false, updatedAt: Date.now() });
+  await writeJsonAtomically(credentialsPath(), { version: 1, serverId: "", encryptedKey: "", remember: false, updatedAt: Date.now() });
 }
 
 async function zoteroRequest(path: string, init: RequestInit = {}, write = false) {
   const root = await zoteroRoot();
+  if (write && !root.serverId) throw new Error("当前 Zotero 本地 API 可读取文献，但此版本不支持 ObsUI 写入；请升级到 Zotero 10 或更新版本后再授权。");
   const credentials = write ? await readCredentials() : null;
   if (write && (!credentials || credentials.serverId !== root.serverId)) throw new Error("ZOTERO_AUTH_REQUIRED");
   const headers = new Headers(init.headers);
-  headers.set("Zotero-Server-ID", root.serverId);
+  if (root.serverId) headers.set("Zotero-Server-ID", root.serverId);
   if (credentials?.key) headers.set("Zotero-API-Key", credentials.key);
   const response = await fetch(zoteroPath(path), { ...init, headers, signal: init.signal ?? AbortSignal.timeout(20_000) });
   if (write && response.status === 401) {
@@ -1467,6 +1620,7 @@ async function zoteroRequest(path: string, init: RequestInit = {}, write = false
     const detail = await response.text().catch(() => "");
     throw new Error(`Zotero 请求失败（HTTP ${response.status}）${detail ? `：${detail.slice(0, 200)}` : "。"}`);
   }
+  if (write) invalidateZoteroItemsCache();
   return { response, serverId: root.serverId };
 }
 
@@ -1486,7 +1640,18 @@ async function readZoteroItemCollection(path: string) {
 }
 
 async function readZoteroItems() {
-  return readZoteroItemCollection("users/0/items?format=json&limit=1000");
+  if (zoteroItemsCache && zoteroItemsCache.expiresAt > Date.now()) return zoteroItemsCache.result;
+  if (zoteroItemsRequestPromise) return zoteroItemsRequestPromise;
+  const generation = zoteroItemsCacheGeneration;
+  const request = readZoteroItemCollection("users/0/items?format=json&limit=1000");
+  zoteroItemsRequestPromise = request;
+  try {
+    const result = await request;
+    if (generation === zoteroItemsCacheGeneration) zoteroItemsCache = { result, expiresAt: Date.now() + zoteroItemsCacheTtlMs };
+    return result;
+  } finally {
+    if (zoteroItemsRequestPromise === request) zoteroItemsRequestPromise = null;
+  }
 }
 
 async function readZoteroTrashItem(itemKey: string) {
@@ -1501,7 +1666,14 @@ function zoteroAuthors(data: RecordLike) {
   }).filter(Boolean) as string[];
 }
 
-function zoteroItemToUnified(item: ZoteroItem, serverId: string): LiteratureUnifiedItem | null {
+function zoteroModifiedAt(data: RecordLike | undefined) {
+  const raw = asString(data?.dateModified);
+  if (!raw) return 0;
+  const timestamp = Date.parse(raw);
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function zoteroItemToUnified(item: ZoteroItem): LiteratureUnifiedItem | null {
   if (asString(item.data.itemType) === "attachment" || asString(item.data.itemType) === "note") return null;
   const title = asString(item.data.title) ?? "未命名 Zotero 条目";
   const year = readYear(item.data.date);
@@ -1522,6 +1694,7 @@ function zoteroItemToUnified(item: ZoteroItem, serverId: string): LiteratureUnif
     analysisSource: null,
     evidence: [],
     relativePath: null,
+    localFiles: [],
     folderName: null,
     fileName: null,
     size: null,
@@ -1535,7 +1708,7 @@ function zoteroItemToUnified(item: ZoteroItem, serverId: string): LiteratureUnif
     duplicateCandidates: [],
     importOperation: null,
     error: null,
-    updatedAt: Date.now(),
+    updatedAt: zoteroModifiedAt(item.data),
   };
 }
 
@@ -1559,6 +1732,7 @@ function localRecordToUnified(record: LiteratureRecord, zoteroItem: ZoteroItem |
     analysisSource: record.analysisSource,
     evidence: record.evidence,
     relativePath: record.relativePath,
+    localFiles: [primaryLocalCopy(record), ...record.localCopies].slice(0, 2).map(({ relativePath, fileName, sourceAvailability }) => ({ relativePath, fileName, sourceAvailability })),
     folderName: record.folderName || null,
     fileName: record.fileName,
     size: record.size,
@@ -1572,17 +1746,174 @@ function localRecordToUnified(record: LiteratureRecord, zoteroItem: ZoteroItem |
     duplicateCandidates: record.duplicateCandidates,
     importOperation: record.importOperation ? { phase: record.importOperation.phase, disposition: record.importOperation.disposition, updatedAt: record.importOperation.updatedAt } : null,
     error: record.error,
-    updatedAt: record.updatedAt,
+    updatedAt: Math.max(record.updatedAt, zoteroModifiedAt(zoteroData)),
   };
 }
 
-function countStatuses(records: readonly LiteratureRecord[], zoteroCount: number) {
+function normalizedRelativeLiteraturePath(value: string) {
+  return value.replace(/[\\/]+/g, "\\").replace(/\\+$/g, "").toLocaleLowerCase();
+}
+
+function isPortableRelativeLiteraturePath(value: string) {
+  return Boolean(value.trim())
+    && !isAbsolute(value)
+    && !/^[a-z]:/i.test(value)
+    && !/^[\\/]/.test(value)
+    && !value.split(/[\\/]+/g).some((segment) => segment === ".." || segment === ".");
+}
+
+function localCopyPath(copy: LiteratureLocalCopy, inboxPath: string) {
+  const path = resolve(inboxPath, ...copy.relativePath.split(/[\\/]+/g));
+  return isPathInside(path, inboxPath) ? path : null;
+}
+
+function readLocalCopies(value: unknown, primaryRelativePath: string): LiteratureLocalCopy[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set([normalizedRelativeLiteraturePath(primaryRelativePath)]);
+  return value.map((candidate): LiteratureLocalCopy | null => {
+    const copy = asRecord(candidate);
+    const relativePath = asString(copy?.relativePath);
+    const fileName = asString(copy?.fileName);
+    const sha256 = asString(copy?.sha256);
+    if (!relativePath || !isPortableRelativeLiteraturePath(relativePath) || !fileName || !sha256) return null;
+    const normalized = normalizedRelativeLiteraturePath(relativePath);
+    if (seen.has(normalized)) return null;
+    seen.add(normalized);
+    return {
+      relativePath,
+      folderName: asString(copy?.folderName) ?? "",
+      fileName,
+      size: Math.max(0, Math.round(asNumber(copy?.size) ?? 0)),
+      mtimeMs: Math.max(0, asNumber(copy?.mtimeMs) ?? 0),
+      sha256,
+      md5: normalizeMd5(copy?.md5),
+      sourceAvailability: copy?.sourceAvailability === "missing" ? "missing" : "present",
+    } satisfies LiteratureLocalCopy;
+  }).filter((copy): copy is LiteratureLocalCopy => copy !== null);
+}
+
+function primaryLocalCopy(record: LiteratureRecord): LiteratureLocalCopy {
+  return {
+    relativePath: record.relativePath,
+    folderName: record.folderName,
+    fileName: record.fileName,
+    size: record.size,
+    mtimeMs: record.mtimeMs,
+    sha256: record.sha256,
+    md5: record.md5 ?? null,
+    sourceAvailability: record.sourceAvailability,
+  };
+}
+
+function localIdentityReason(left: LiteratureRecord, right: LiteratureRecord): "hash" | "doi" | "title-author" | null {
+  if (left.zotero && right.zotero && left.zotero.serverId === right.zotero.serverId && left.zotero.itemKey === right.zotero.itemKey) return "doi";
+  const leftHashes = new Set([left.sha256, ...left.localCopies.map((copy) => copy.sha256)].map((hash) => hash.toLocaleLowerCase()));
+  if ([right.sha256, ...right.localCopies.map((copy) => copy.sha256)].some((hash) => leftHashes.has(hash.toLocaleLowerCase()))) return "hash";
+  const leftDoi = normalizeDoi(left.doi);
+  const rightDoi = normalizeDoi(right.doi);
+  if (leftDoi && rightDoi) return leftDoi === rightDoi ? "doi" : null;
+  return null;
+}
+
+function literatureMetadataScore(record: LiteratureRecord) {
+  const fallbackTitle = normalizeTitle(titleFromFileName(record.fileName));
+  return (record.analysisSource ? 8 : 0)
+    + (record.title && normalizeTitle(record.title) !== fallbackTitle ? 3 : 0)
+    + (record.authors.length ? 3 : 0)
+    + (record.doi ? 3 : 0)
+    + (record.year ? 1 : 0)
+    + (record.journal ? 1 : 0)
+    + (record.abstract ? 1 : 0)
+    + (record.summaryZh ? 1 : 0);
+}
+
+function mergeLocalRecordPair(primary: LiteratureRecord, other: LiteratureRecord): LiteratureRecord {
+  const metadata = literatureMetadataScore(other) > literatureMetadataScore(primary) ? other : primary;
+  const localCopies = new Map<string, LiteratureLocalCopy>();
+  for (const copy of [...primary.localCopies, primaryLocalCopy(other), ...other.localCopies]) {
+    const key = normalizedRelativeLiteraturePath(copy.relativePath);
+    if (key === normalizedRelativeLiteraturePath(primary.relativePath)) continue;
+    const previous = localCopies.get(key);
+    localCopies.set(key, previous?.sourceAvailability === "present" && copy.sourceAvailability === "missing" ? previous : copy);
+  }
+  const candidates = new Map<string, LiteratureDuplicateCandidate>();
+  for (const candidate of [...primary.duplicateCandidates, ...other.duplicateCandidates]) {
+    const current = candidates.get(candidate.itemKey);
+    if (!current || candidate.score > current.score) candidates.set(candidate.itemKey, candidate);
+  }
+  const duplicateCandidates = [...candidates.values()];
+  const manuallyIgnored = [primary, other].some((record) => record.status === "ignored" && record.ignoredReason === "manual");
+  const sourceAvailability = [primary, other].some((record) => record.sourceAvailability === "present" || record.localCopies.some((copy) => copy.sourceAvailability === "present")) ? "present" : "missing";
+  const zotero = primary.zotero ?? other.zotero;
+  const status: LiteratureStatus = manuallyIgnored
+    ? "ignored"
+    : duplicateCandidates.length
+      ? "conflict"
+      : zotero && [primary, other].some((record) => record.status === "imported")
+        ? "imported"
+        : sourceAvailability === "missing" && !zotero
+          ? "missing"
+          : [primary, other].some((record) => record.status === "ready" || record.analysisSource !== null)
+            ? "ready"
+            : [primary, other].some((record) => record.status === "matched")
+              ? "matched"
+              : [primary, other].some((record) => record.status === "failed" || record.status === "partial-failed")
+                ? primary.status === "partial-failed" || other.status === "partial-failed" ? "partial-failed" : "failed"
+                : [primary, other].some((record) => record.status === "imported")
+                  ? "imported"
+                  : "detected";
+  return {
+    ...primary,
+    title: metadata.title,
+    authors: metadata.authors,
+    journal: metadata.journal,
+    year: metadata.year,
+    doi: metadata.doi ?? primary.doi ?? other.doi,
+    abstract: metadata.abstract,
+    translatedTitleZh: metadata.translatedTitleZh,
+    summaryZh: metadata.summaryZh,
+    suggestedTags: [...new Set([...primary.suggestedTags, ...other.suggestedTags])],
+    confidence: metadata.confidence,
+    review: { required: primary.review.required || other.review.required, reasons: [...new Set([...primary.review.reasons, ...other.review.reasons])].slice(0, 8) },
+    analysisSource: metadata.analysisSource,
+    evidence: [...new Set([...primary.evidence, ...other.evidence])].slice(0, 20),
+    md5: primary.md5 ?? (primary.sha256 === other.sha256 ? other.md5 : null) ?? null,
+    localCopies: [...localCopies.values()],
+    recordAliases: [...new Set([...primary.recordAliases, other.id, ...other.recordAliases])].filter((id) => id !== primary.id),
+    status,
+    sourceAvailability,
+    ignoredReason: manuallyIgnored ? "manual" : null,
+    zotero,
+    duplicateCandidates,
+    importOperation: primary.importOperation ?? other.importOperation,
+    error: metadata.error ?? primary.error ?? other.error,
+    updatedAt: Math.max(primary.updatedAt, other.updatedAt),
+  };
+}
+
+export function coalesceLocalLiteratureRecords(records: readonly LiteratureRecord[]): LiteratureRecord[] {
+  const merged: LiteratureRecord[] = [];
+  for (const record of records) {
+    const matchIndex = record.status === "importing" ? -1 : merged.findIndex((candidate) => candidate.status !== "importing" && localIdentityReason(candidate, record) !== null);
+    if (matchIndex < 0) {
+      merged.push(record);
+      continue;
+    }
+    merged[matchIndex] = mergeLocalRecordPair(merged[matchIndex]!, record);
+  }
+  return merged;
+}
+
+function countStatuses(records: readonly LiteratureRecord[], zoteroItems: readonly ZoteroItem[], serverId: string | null) {
   const statuses: Record<LiteratureStatus, number> = { detected: 0, analyzing: 0, ready: 0, matched: 0, conflict: 0, importing: 0, imported: 0, failed: 0, "partial-failed": 0, ignored: 0, missing: 0 };
   for (const record of records) {
     statuses[record.status] += 1;
     if (record.sourceAvailability === "missing" && record.status !== "missing") statuses.missing += 1;
   }
-  return { ...statuses, total: records.length + zoteroCount, zotero: zoteroCount };
+  const mainItems = zoteroItems.filter((item) => asString(item.data.itemType) !== "attachment" && asString(item.data.itemType) !== "note");
+  const linkedKeys = new Set(records.filter((record) => record.zotero?.serverId === serverId).map((record) => record.zotero?.itemKey).filter((key): key is string => Boolean(key)));
+  const unlinkedZoteroCount = mainItems.filter((item) => !linkedKeys.has(item.key)).length;
+  return { ...statuses, total: records.length + unlinkedZoteroCount, zotero: mainItems.length };
 }
 
 function safeError(error: unknown) {
@@ -1591,7 +1922,7 @@ function safeError(error: unknown) {
   if (error.message === "ZOTERO_AUTH_EXPIRED") return "Zotero 授权已失效，请重新授权。";
   return error.message
     .replace(/\\Users\\[^\\]+/gi, "<用户目录>")
-    .replace(new RegExp(LITERATURE_DATABASE_ROOT.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi"), "<ObsUI 数据目录>")
+    .replace(new RegExp(getLiteratureDatabaseRoot().replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi"), "<ObsUI 数据目录>")
     .replace(/\b[A-Za-z]:\\[^\r\n]*/g, "<本地路径>")
     .slice(0, 500);
 }
@@ -1677,6 +2008,7 @@ async function writeZoteroItems(items: RecordLike[], idempotencyKey: string) {
     headers: { "Content-Type": "application/json", "Zotero-Write-Token": writeToken(idempotencyKey) },
     body,
   }, true);
+  if (!serverId) throw new Error("当前 Zotero 本地 API 不支持写入。");
   const key = parseWriteKey(await response.json());
   if (!key) throw new Error("Zotero 未返回新条目 key。");
   return { key, serverId };
@@ -1783,6 +2115,7 @@ async function uploadZoteroFile(attachmentKey: string, filePath: string, fileNam
 
 async function authorizeZotero() {
   const { serverId } = await zoteroRoot();
+  if (!serverId) throw new Error("当前 Zotero 本地 API 可读取文献，但授权写入需要 Zotero 10 或更新版本。");
   const response = await fetch(zoteroPath("local/authorize"), {
     method: "POST",
     headers: { "Content-Type": "application/json", "Zotero-Server-ID": serverId },
@@ -1796,7 +2129,7 @@ async function authorizeZotero() {
   }
   const key = asString(payload?.key);
   if (!key) throw new Error("Zotero 授权响应缺少 key。");
-  await writeJsonAtomically(credentialsPath, { version: 1, serverId, encryptedKey: await protectSecret(key), remember: payload?.remember === true, updatedAt: Date.now() } satisfies StoredCredentials);
+  await writeJsonAtomically(credentialsPath(), { version: 1, serverId, encryptedKey: await protectSecret(key), remember: payload?.remember === true, updatedAt: Date.now() } satisfies StoredCredentials);
   return { serverId, remember: payload?.remember === true };
 }
 
@@ -1897,11 +2230,14 @@ async function resolveZoteroAttachmentPath(parentKey: string, children: readonly
 }
 
 async function findLiteraturePdfPath(pluginState: LiteraturePluginState, id: string): Promise<string | null> {
-  const record = pluginState.store.records.find((item) => item.id === id);
+  const record = pluginState.store.records.find((item) => item.id === id || item.recordAliases.includes(id));
   const zoteroItemKey = record?.zotero?.itemKey ?? (!record && /^zotero-[A-Za-z0-9]+$/.test(id) ? id.slice("zotero-".length) : null);
   if (record) {
-    const localFile = await existingRegularFile(resolve(record.sourcePath));
-    if (localFile && extname(localFile).toLocaleLowerCase() === ".pdf") return localFile;
+    const sourcePaths = [resolve(record.sourcePath), ...record.localCopies.map((copy) => pluginState.settings.inboxPath ? localCopyPath(copy, pluginState.settings.inboxPath) : null).filter((path): path is string => path !== null)];
+    for (const sourcePath of sourcePaths) {
+      const localFile = await existingRegularFile(sourcePath);
+      if (localFile && extname(localFile).toLocaleLowerCase() === ".pdf") return localFile;
+    }
   }
   if (!zoteroItemKey) return null;
   try {
@@ -1921,6 +2257,23 @@ async function resolveLiteraturePdfPath(pluginState: LiteraturePluginState, id: 
   if (!metadata?.isFile()) throw new Error("文献 PDF 不存在。");
   if (metadata.size > maxPdfBytes) throw new Error("文献 PDF 过大，无法在 ObsUI 内打开。");
   return filePath;
+}
+
+export function parsePdfByteRange(value: string | undefined, size: number): { start: number; end: number } | "invalid" | null {
+  if (value === undefined) return null;
+  const match = /^bytes=(\d*)-(\d*)$/i.exec(value.trim());
+  if (!match || size <= 0) return "invalid";
+  const [, first, last] = match;
+  if (!first && !last) return "invalid";
+  if (!first) {
+    const suffixLength = Number(last);
+    if (!Number.isSafeInteger(suffixLength) || suffixLength <= 0) return "invalid";
+    return { start: Math.max(0, size - suffixLength), end: size - 1 };
+  }
+  const start = Number(first);
+  const requestedEnd = last ? Number(last) : size - 1;
+  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(requestedEnd) || start >= size || requestedEnd < start) return "invalid";
+  return { start, end: Math.min(requestedEnd, size - 1) };
 }
 
 function parseSelectionTranslationRequest(value: unknown): LiteratureSelectionTranslationRequest {
@@ -2127,13 +2480,8 @@ async function openExplorerFolderOnce(directoryPath: string) {
     "$explorerPath = Join-Path $env:WINDIR 'explorer.exe'",
     "$argument = '/n,/e,\"' + $target + '\"'",
     "Start-Process -FilePath $explorerPath -ArgumentList $argument -WindowStyle Normal -ErrorAction Stop | Out-Null",
-    "$deadline = [DateTime]::UtcNow.AddSeconds(5)",
-    "while ($null -eq $targetWindow -and [DateTime]::UtcNow -lt $deadline) {",
-    "  $targetWindow = Find-TargetExplorerWindow",
-    "  if ($null -eq $targetWindow) { Start-Sleep -Milliseconds 150 }",
+    "return",
     "}",
-    "}",
-    "if ($null -eq $targetWindow) { throw '资源管理器未能打开目标文件夹。' }",
     "Add-Type -TypeDefinition @'",
     "using System;",
     "using System.Runtime.InteropServices;",
@@ -2177,8 +2525,12 @@ async function openExplorerFolder(directoryPath: string) {
   return operation;
 }
 
-async function openSourceFolder(record: LiteratureRecord) {
-  const filePath = resolve(record.sourcePath);
+async function openSourceFolder(pluginState: LiteraturePluginState, record: LiteratureRecord) {
+  const sourcePath = pluginState.settings.inboxPath
+    ? record.localCopies.map((copy) => localCopyPath(copy, pluginState.settings.inboxPath!)).find((path) => path && existsSync(path))
+    : undefined;
+  const canonicalPath = existsSync(record.sourcePath) ? record.sourcePath : sourcePath ?? record.sourcePath;
+  const filePath = resolve(canonicalPath);
   const fileMetadata = await stat(filePath).catch(() => null);
   const fileExists = Boolean(fileMetadata?.isFile());
   const directoryPath = sourceDirectoryPath(filePath);
@@ -2256,6 +2608,35 @@ function registerMiddleware(pluginState: LiteraturePluginState, initialize: () =
           if (!hasSameOrigin(request)) return sendJson(response, 403, { message: "本机来源校验失败。" });
           return sendJson(response, 200, await organizeLibrary(pluginState, requestedOrganizationIds(await readJsonBody(request))));
         }
+        if (request.method === "POST" && path === "/duplicates/merge") {
+          if (!hasSameOrigin(request)) return sendJson(response, 403, { message: "本机来源校验失败。" });
+          const body = asRecord(await readJsonBody(request));
+          const rawItems = body?.items;
+          if (!Array.isArray(rawItems)) throw new Error("批量合并候选格式无效。");
+          const items = rawItems.map((candidate) => {
+            const merge = asRecord(candidate);
+            return { id: asString(merge?.id) ?? "", itemKey: asString(merge?.itemKey) ?? "" };
+          });
+          return sendJson(response, 200, await enqueueDuplicateMutation(pluginState, async () => {
+            const zotero = await readZoteroItems();
+            if (!zotero.serverId) throw new Error("当前 Zotero 未提供稳定库 ID，无法保存可靠的来源关联。");
+            const nextRecords = mergeDuplicateLiteratureRecords(pluginState.store.records, items, zotero.serverId, zotero.items);
+            await persistRecordMutation(pluginState, nextRecords);
+            return { processed: items.length, message: `已将 ${items.length} 条本地记录关联到已有 Zotero 条目。` };
+          }));
+        }
+        if (request.method === "POST" && path === "/duplicates/ignore") {
+          if (!hasSameOrigin(request)) return sendJson(response, 403, { message: "本机来源校验失败。" });
+          const body = asRecord(await readJsonBody(request));
+          if (!Array.isArray(body?.ids)) throw new Error("批量忽略列表格式无效。");
+          if (!body.ids.every((id): id is string => typeof id === "string")) throw new Error("批量忽略列表包含无效记录 ID。");
+          const ids = body.ids as string[];
+          return sendJson(response, 200, await enqueueDuplicateMutation(pluginState, async () => {
+            const nextRecords = ignoreDuplicateLiteratureRecords(pluginState.store.records, ids);
+            await persistRecordMutation(pluginState, nextRecords);
+            return { processed: ids.length, message: `已忽略 ${ids.length} 条疑似重复记录；可在“暂不处理”中恢复。` };
+          }));
+        }
         if (request.method === "POST" && path === "/select-folder") {
           if (!hasSameOrigin(request)) return sendJson(response, 403, { message: "本机来源校验失败。" });
           return sendJson(response, 200, await selectInboxFolder(pluginState));
@@ -2303,7 +2684,7 @@ function registerMiddleware(pluginState: LiteraturePluginState, initialize: () =
         const ignoreMatch = path.match(/^\/items\/([^/]+)\/ignore$/);
         if (request.method === "POST" && ignoreMatch) {
           if (!hasSameOrigin(request)) return sendJson(response, 403, { message: "本机来源校验失败。" });
-          return sendJson(response, 200, await setRecordStatus(pluginState, decodeURIComponent(ignoreMatch[1]), "ignored"));
+          return sendJson(response, 200, await enqueueDuplicateMutation(pluginState, () => setRecordStatus(pluginState, decodeURIComponent(ignoreMatch[1]), "ignored")));
         }
         const restoreMatch = path.match(/^\/items\/([^/]+)\/restore$/);
         if (request.method === "POST" && restoreMatch) {
@@ -2324,19 +2705,42 @@ function registerMiddleware(pluginState: LiteraturePluginState, initialize: () =
         if (request.method === "POST" && openMatch) {
           if (!hasSameOrigin(request)) return sendJson(response, 403, { message: "本机来源校验失败。" });
           const record = findRecord(pluginState, decodeURIComponent(openMatch[1]));
-          const message = await openSourceFolder(record);
+          const message = await openSourceFolder(pluginState, record);
           return sendJson(response, 200, { message });
         }
         const pdfMatch = path.match(/^\/items\/([^/]+)\/pdf$/);
-        if (request.method === "GET" && pdfMatch) {
+        if ((request.method === "GET" || request.method === "HEAD") && pdfMatch) {
           const filePath = await resolveLiteraturePdfPath(pluginState, decodeURIComponent(pdfMatch[1]));
-          const file = await readFile(filePath);
-          response.statusCode = 200;
+          const metadata = await stat(filePath);
+          const requestedRange = parsePdfByteRange(request.headers.range, metadata.size);
+          response.setHeader("Accept-Ranges", "bytes");
           response.setHeader("Content-Type", "application/pdf");
           response.setHeader("Content-Disposition", "inline");
           response.setHeader("Cache-Control", "no-store");
-          response.setHeader("Content-Length", String(file.byteLength));
-          return response.end(file);
+          response.setHeader("Last-Modified", metadata.mtime.toUTCString());
+          if (requestedRange === "invalid") {
+            response.statusCode = 416;
+            response.setHeader("Content-Range", `bytes */${metadata.size}`);
+            return response.end();
+          }
+          const start = requestedRange?.start ?? 0;
+          const end = requestedRange?.end ?? Math.max(0, metadata.size - 1);
+          const contentLength = metadata.size === 0 ? 0 : end - start + 1;
+          response.statusCode = requestedRange ? 206 : 200;
+          response.setHeader("Content-Length", String(contentLength));
+          if (requestedRange) response.setHeader("Content-Range", `bytes ${start}-${end}/${metadata.size}`);
+          if (request.method === "HEAD" || contentLength === 0) return response.end();
+          const fileStream = createReadStream(filePath, requestedRange ? { start, end } : undefined);
+          try {
+            await pipeline(fileStream, response);
+          } catch (error) {
+            if (response.headersSent) {
+              response.destroy(error instanceof Error ? error : undefined);
+              return;
+            }
+            throw error;
+          }
+          return;
         }
         const openDocumentMatch = path.match(/^\/items\/([^/]+)\/open-document$/);
         if (request.method === "POST" && openDocumentMatch) {
@@ -2440,18 +2844,19 @@ function registerMiddleware(pluginState: LiteraturePluginState, initialize: () =
 
 async function initializeState(pluginState: LiteraturePluginState) {
   if (pluginState.initialized) return;
-  await mkdir(LOCAL_MODEL_ROOT, { recursive: true });
+  await mkdir(getLocalModelRoot(), { recursive: true });
   const defaultSettingsValue = defaultSettings();
   const defaultStoreValue = emptyState();
   const defaultTaskValue = emptyTaskState();
   const defaultDiscussionValue = emptyDiscussionState();
-  const savedSettings = await readJsonFile(settingsPath, defaultSettingsValue);
+  const savedSettings = await readJsonFile(settingsPath(), defaultSettingsValue, (value) => hasSupportedVersion(asRecord(value), 2));
+  const savedStore = await readJsonFile(databaseStatePath(), defaultStoreValue, (value) => hasSupportedVersion(asRecord(value), 2) && Array.isArray(asRecord(value)?.records));
+  const savedTasks = await readJsonFile(taskStatePath(), defaultTaskValue, (value) => hasSupportedVersion(asRecord(value), 1) && Array.isArray(asRecord(value)?.tasks));
+  const savedDiscussions = await readJsonFile(discussionStatePath(), defaultDiscussionValue, (value) => hasSupportedVersion(asRecord(value), 1) && asRecord(asRecord(value)?.discussions) !== null);
   pluginState.settings = normalizeSettings(savedSettings);
-  if (JSON.stringify(savedSettings) !== JSON.stringify(pluginState.settings)) await writeJsonAtomically(settingsPath, pluginState.settings);
-  const savedStore = await readJsonFile(databaseStatePath, defaultStoreValue);
+  if (JSON.stringify(savedSettings) !== JSON.stringify(pluginState.settings)) await writeJsonAtomically(settingsPath(), pluginState.settings);
   pluginState.store = normalizeStoredState(savedStore);
-  if (JSON.stringify(savedStore) !== JSON.stringify(pluginState.store)) await writeJsonAtomically(databaseStatePath, pluginState.store);
-  const savedTasks = await readJsonFile(taskStatePath, defaultTaskValue);
+  if (JSON.stringify(savedStore) !== JSON.stringify(pluginState.store)) await writeJsonAtomically(databaseStatePath(), pluginState.store);
   const normalizedTasks = normalizeStoredTaskState(savedTasks);
   pluginState.tasks = new Map(normalizedTasks.tasks.map((task) => [task.id, task]));
   let recoveredTasks = false;
@@ -2468,23 +2873,22 @@ async function initializeState(pluginState: LiteraturePluginState) {
     }
   }
   if (recoveredTasks || JSON.stringify(savedTasks) !== JSON.stringify(normalizedTasks)) {
-    await writeJsonAtomically(taskStatePath, { version: 1, tasks: [...pluginState.tasks.values()].slice(-maxLiteratureTasks) } satisfies StoredTaskState);
+    await writeJsonAtomically(taskStatePath(), { version: 1, tasks: [...pluginState.tasks.values()].slice(-maxLiteratureTasks) } satisfies StoredTaskState);
   }
-  const savedDiscussions = await readJsonFile(discussionStatePath, defaultDiscussionValue);
   const normalizedDiscussions = normalizeStoredDiscussionState(savedDiscussions);
   pluginState.discussions = new Map(Object.entries(normalizedDiscussions.discussions));
-  if (JSON.stringify(savedDiscussions) !== JSON.stringify(normalizedDiscussions)) await writeJsonAtomically(discussionStatePath, normalizedDiscussions);
+  if (JSON.stringify(savedDiscussions) !== JSON.stringify(normalizedDiscussions)) await writeJsonAtomically(discussionStatePath(), normalizedDiscussions);
   try {
-    await access(settingsPath);
+    await access(settingsPath());
   } catch {
-    await writeJsonAtomically(settingsPath, pluginState.settings);
+    await writeJsonAtomically(settingsPath(), pluginState.settings);
   }
   try {
-    await access(databaseStatePath);
+    await access(databaseStatePath());
   } catch {
-    await writeJsonAtomically(databaseStatePath, pluginState.store);
+    await writeJsonAtomically(databaseStatePath(), pluginState.store);
   }
-  await readCredentials();
+  await readCredentials().catch(() => null);
   pluginState.initialized = true;
   await configureWatcher(pluginState);
   void scanLibrary(pluginState);
@@ -2499,11 +2903,11 @@ function enqueueStateWrite(pluginState: LiteraturePluginState, task: () => Promi
 
 async function persistStore(pluginState: LiteraturePluginState) {
   pluginState.store.updatedAt = Date.now();
-  await enqueueStateWrite(pluginState, () => writeJsonAtomically(databaseStatePath, pluginState.store));
+  await enqueueStateWrite(pluginState, () => writeJsonAtomically(databaseStatePath(), pluginState.store));
 }
 
 async function persistSettings(pluginState: LiteraturePluginState) {
-  await enqueueStateWrite(pluginState, () => writeJsonAtomically(settingsPath, pluginState.settings));
+  await enqueueStateWrite(pluginState, () => writeJsonAtomically(settingsPath(), pluginState.settings));
 }
 
 function enqueueTaskWrite(pluginState: LiteraturePluginState, task: () => Promise<void>) {
@@ -2522,7 +2926,7 @@ function pruneTaskHistory(pluginState: LiteraturePluginState) {
 
 async function persistTasks(pluginState: LiteraturePluginState) {
   const retainedTasks = pruneTaskHistory(pluginState);
-  await enqueueTaskWrite(pluginState, () => writeJsonAtomically(taskStatePath, { version: 1, tasks: retainedTasks.slice(-maxLiteratureTasks) } satisfies StoredTaskState));
+  await enqueueTaskWrite(pluginState, () => writeJsonAtomically(taskStatePath(), { version: 1, tasks: retainedTasks.slice(-maxLiteratureTasks) } satisfies StoredTaskState));
 }
 
 function enqueueDiscussionWrite(pluginState: LiteraturePluginState, task: () => Promise<void>) {
@@ -2532,7 +2936,7 @@ function enqueueDiscussionWrite(pluginState: LiteraturePluginState, task: () => 
 }
 
 async function persistDiscussions(pluginState: LiteraturePluginState) {
-  await enqueueDiscussionWrite(pluginState, () => writeJsonAtomically(discussionStatePath, {
+  await enqueueDiscussionWrite(pluginState, () => writeJsonAtomically(discussionStatePath(), {
     version: 1,
     discussions: Object.fromEntries([...pluginState.discussions.entries()].map(([itemId, messages]) => [itemId, messages.slice(-maxDiscussionMessages)])),
   } satisfies StoredDiscussionState));
@@ -2654,6 +3058,22 @@ function sameFileMetadata(left: { size: number; mtimeMs: number }, right: { size
   return left.size === right.size && Math.round(left.mtimeMs) === Math.round(right.mtimeMs);
 }
 
+export function shouldSkipLiteratureFileHash(
+  existingStatus: LiteratureRecord["status"] | undefined,
+  existingSource: { size: number; mtimeMs: number; md5?: string | null; sourceAvailability?: string | null } | null | undefined,
+  file: { size: number; mtimeMs: number },
+  legacyRemoveTombstone: boolean,
+) {
+  return Boolean(
+    existingStatus &&
+      existingSource?.md5 &&
+      existingSource.sourceAvailability !== "missing" &&
+      existingStatus !== "missing" &&
+      !legacyRemoveTombstone &&
+      sameFileMetadata(existingSource, file),
+  );
+}
+
 async function waitForStableFiles(files: readonly { path: string; size: number; mtimeMs: number }[]) {
   if (!files.length) return new Set<string>();
   await new Promise<void>((resolvePromise) => setTimeout(resolvePromise, scanDebounceMs));
@@ -2679,58 +3099,100 @@ async function scanLibrary(pluginState: LiteraturePluginState) {
     try {
       await validateInboxPath(inboxPath);
       const files = await collectPdfFiles(inboxPath);
-      const byPath = new Map(pluginState.store.records.map((record) => [normalizedPath(record.sourcePath), record]));
-      const seen = new Set<string>();
-      let changed = false;
+      const before = JSON.stringify(pluginState.store.records);
+      const byPath = new Map<string, { record: LiteratureRecord; copy: LiteratureLocalCopy | null }>();
+      for (const record of pluginState.store.records) {
+        byPath.set(normalizedPath(record.sourcePath), { record, copy: null });
+        const configuredPrimaryPath = resolve(inboxPath, ...record.relativePath.split(/[\\/]+/g));
+        if (isPathInside(configuredPrimaryPath, inboxPath)) byPath.set(normalizedPath(configuredPrimaryPath), { record, copy: null });
+        for (const copy of record.localCopies) {
+          const copyPath = localCopyPath(copy, inboxPath);
+          if (copyPath) byPath.set(normalizedPath(copyPath), { record, copy });
+        }
+      }
       const unstableCandidates = files.filter((file) => {
         const existing = byPath.get(normalizedPath(file.path));
-        return !existing || existing.status === "missing" || existing.sourceAvailability === "missing" || existing.status === "ignored" && existing.ignoredReason === "legacy-remove" || !sameFileMetadata(existing, file);
+        const metadata = existing?.copy ?? existing?.record;
+        return !metadata || !metadata.md5 || metadata.sourceAvailability === "missing" || existing?.record.status === "missing" || existing?.record.status === "ignored" && existing.record.ignoredReason === "legacy-remove" || !sameFileMetadata(metadata, file);
       });
       const stableCandidates = await waitForStableFiles(unstableCandidates);
       for (const file of files) {
         const path = normalizedPath(file.path);
-        const existing = byPath.get(path);
+        const existingEntry = byPath.get(path);
+        const existing = existingEntry?.record;
+        const existingSource = existingEntry?.copy ?? existing;
         const legacyRemoveTombstone = existing?.status === "ignored" && existing.ignoredReason === "legacy-remove";
-        if (existing && existing.status !== "missing" && existing.sourceAvailability !== "missing" && !legacyRemoveTombstone && sameFileMetadata(existing, file)) {
-          seen.add(existing.id);
+        if (shouldSkipLiteratureFileHash(existing?.status, existingSource, file, legacyRemoveTombstone)) {
           continue;
         }
         if (!stableCandidates.has(path)) continue;
-        const sha256 = await hashFile(file.path, "sha256");
+        const { sha256, md5 } = await hashFileDigests(file.path);
         if (existing) {
-          const result = updateRecordForFile(existing, file, sha256);
-          seen.add(result.record.id);
-          if (result.changed) {
+          if (existingEntry?.copy) {
+            if (existingEntry.copy.sha256 === sha256) {
+              existing.localCopies = existing.localCopies.map((copy) => normalizedRelativeLiteraturePath(copy.relativePath) === normalizedRelativeLiteraturePath(file.relativePath) ? { ...copy, ...localCopyForFile(file, sha256, md5), sourceAvailability: "present" } : copy);
+              existing.md5 = existing.md5 ?? md5;
+            } else {
+              existing.localCopies = existing.localCopies.filter((copy) => normalizedRelativeLiteraturePath(copy.relativePath) !== normalizedRelativeLiteraturePath(file.relativePath));
+              const duplicate = pluginState.store.records.find((record) => record.sha256 === sha256 || record.localCopies.some((copy) => copy.sha256 === sha256));
+              if (duplicate) {
+                const duplicateIndex = pluginState.store.records.findIndex((record) => record.id === duplicate.id);
+                if (duplicateIndex >= 0) pluginState.store.records[duplicateIndex] = attachLocalCopy(duplicate, file, sha256, md5);
+              }
+              else pluginState.store.records.push(createRecord(file, sha256, md5));
+            }
+          } else {
+            const result = updateRecordForFile(existing, file, sha256, md5);
             const index = pluginState.store.records.findIndex((record) => record.id === existing.id);
             if (index >= 0) pluginState.store.records[index] = result.record;
-            changed = true;
           }
         } else {
-          pluginState.store.records.push(createRecord(file, sha256));
-          changed = true;
+          const duplicate = pluginState.store.records.find((record) => record.sha256 === sha256 || record.localCopies.some((copy) => copy.sha256 === sha256));
+          if (duplicate) {
+            const duplicateIndex = pluginState.store.records.findIndex((record) => record.id === duplicate.id);
+            if (duplicateIndex >= 0) pluginState.store.records[duplicateIndex] = attachLocalCopy(duplicate, file, sha256, md5);
+          }
+          else pluginState.store.records.push(createRecord(file, sha256, md5));
         }
       }
+      const presentPaths = new Set(files.map((file) => normalizedPath(file.path)));
       for (const record of pluginState.store.records) {
-        if (!seen.has(record.id) && files.some((file) => normalizedPath(file.path) === normalizedPath(record.sourcePath))) continue;
-        if (seen.has(record.id)) continue;
-        try {
-          await access(record.sourcePath);
-          if (record.status === "missing" || record.sourceAvailability === "missing") {
-            record.status = record.status === "missing" ? record.zotero?.itemKey ? "imported" : "detected" : record.status;
+        record.localCopies = record.localCopies.map((copy) => {
+          const copyPath = localCopyPath(copy, inboxPath);
+          return { ...copy, sourceAvailability: copyPath && presentPaths.has(normalizedPath(copyPath)) ? "present" : "missing" };
+        });
+        const primaryPresent = presentPaths.has(normalizedPath(record.sourcePath));
+        if (!primaryPresent) {
+          const availableCopyIndex = record.localCopies.findIndex((copy) => copy.sourceAvailability === "present");
+          if (availableCopyIndex >= 0) {
+            const availableCopy = record.localCopies[availableCopyIndex]!;
+            const missingPrimary = { ...primaryLocalCopy(record), sourceAvailability: "missing" as const };
+            const promotedPath = localCopyPath(availableCopy, inboxPath);
+            if (!promotedPath) continue;
+            record.sourcePath = promotedPath;
+            record.relativePath = availableCopy.relativePath;
+            record.folderName = availableCopy.folderName;
+            record.fileName = availableCopy.fileName;
+            record.size = availableCopy.size;
+            record.mtimeMs = availableCopy.mtimeMs;
+            record.sha256 = availableCopy.sha256;
+            record.md5 = availableCopy.md5 ?? null;
+            record.localCopies = [...record.localCopies.filter((_, index) => index !== availableCopyIndex), missingPrimary];
             record.sourceAvailability = "present";
+            if (record.status === "missing") record.status = record.zotero?.itemKey ? "imported" : restoredLiteratureStatus(record);
             record.updatedAt = Date.now();
-            changed = true;
+          } else {
+            const result = markSourceFileMissing(record);
+            Object.assign(record, result.record);
           }
-        } catch {
-          const result = markSourceFileMissing(record);
-          if (result.changed) {
-            const index = pluginState.store.records.findIndex((candidate) => candidate.id === record.id);
-            if (index >= 0) pluginState.store.records[index] = result.record;
-            changed = true;
-          }
+        } else if (record.sourceAvailability === "missing" || record.status === "missing") {
+          record.status = record.status === "missing" ? record.zotero?.itemKey ? "imported" : restoredLiteratureStatus(record) : record.status;
+          record.sourceAvailability = "present";
+          record.updatedAt = Date.now();
         }
       }
-      if (changed) await persistStore(pluginState);
+      pluginState.store.records = coalesceLocalLiteratureRecords(pluginState.store.records);
+      if (JSON.stringify(pluginState.store.records) !== before) await persistStore(pluginState);
       pluginState.lastScanAt = Date.now();
       pluginState.watcherError = null;
       void processDetected(pluginState);
@@ -2770,7 +3232,7 @@ async function processDetected(pluginState: LiteraturePluginState) {
 }
 
 function findRecord(pluginState: LiteraturePluginState, id: string) {
-  const record = pluginState.store.records.find((item) => item.id === id);
+  const record = pluginState.store.records.find((item) => item.id === id || item.recordAliases.includes(id));
   if (!record) throw new Error("文献记录不存在。");
   return record;
 }
@@ -2844,7 +3306,7 @@ async function findUnifiedItemForReport(pluginState: LiteraturePluginState, id: 
   const zotero = await readZoteroItems();
   const item = zotero.items.find((candidate) => candidate.key === zoteroKey);
   if (!item) throw new Error("Zotero 文献记录不存在。");
-  const unified = zoteroItemToUnified(item, zotero.serverId);
+  const unified = zoteroItemToUnified(item);
   if (!unified) throw new Error("Zotero 文献记录无法转换。");
   return unified;
 }
@@ -2939,7 +3401,7 @@ async function runDeepAnalysisStructuredChat(pluginState: LiteraturePluginState,
     maxInputCharacters: 31_000,
     timeoutMs: deepAnalysisRequestTimeoutMs,
     signal,
-    workingDirectoryRoot: join(LITERATURE_DATABASE_ROOT, "analysis-work"),
+    workingDirectoryRoot: join(getLiteratureDatabaseRoot(), "analysis-work"),
   });
   try {
     const json = output.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
@@ -3291,8 +3753,33 @@ function normalizedFirstAuthor(authors: readonly string[]) {
   return normalizeTitle(authors[0] ?? "");
 }
 
-export function findLiteratureDuplicates(record: Pick<LiteratureRecord, "title" | "authors" | "year" | "doi" | "sha256">, items: readonly ZoteroItem[]) {
-  const candidates: LiteratureDuplicateCandidate[] = [];
+type LiteratureDuplicateLookup = Pick<LiteratureRecord, "title" | "authors" | "year" | "doi" | "sha256"> & Partial<Pick<LiteratureRecord, "md5" | "localCopies">>;
+
+function zoteroAttachmentHashesByParent(items: readonly ZoteroItem[]) {
+  const hashes = new Map<string, { md5: Set<string>; sha256: Set<string> }>();
+  for (const item of items) {
+    if (asString(item.data.itemType) !== "attachment" || !zoteroAttachmentLooksLikePdf(item.data)) continue;
+    const parentKey = asString(item.data.parentItem);
+    if (!parentKey) continue;
+    let parentHashes = hashes.get(parentKey);
+    if (!parentHashes) {
+      parentHashes = { md5: new Set(), sha256: new Set() };
+      hashes.set(parentKey, parentHashes);
+    }
+    const md5 = normalizeMd5(item.data.md5);
+    if (md5) parentHashes.md5.add(md5);
+    for (const sha256 of zoteroObsUiHashes({ extra: item.data.note })) parentHashes.sha256.add(sha256);
+  }
+  return hashes;
+}
+
+export function findLiteratureDuplicates(record: LiteratureDuplicateLookup, items: readonly ZoteroItem[]) {
+  const doiMatches: LiteratureDuplicateCandidate[] = [];
+  const hashMatches: LiteratureDuplicateCandidate[] = [];
+  const metadataMatches: LiteratureDuplicateCandidate[] = [];
+  const localMd5s = new Set([record.md5, ...(record.localCopies ?? []).map((copy) => copy.md5 ?? null)].map(normalizeMd5).filter((md5): md5 is string => md5 !== null));
+  const localSha256s = new Set([record.sha256, ...(record.localCopies ?? []).map((copy) => copy.sha256)].map((hash) => hash.toLocaleLowerCase()));
+  const attachmentHashes = zoteroAttachmentHashesByParent(items);
   for (const item of items) {
     if (asString(item.data.itemType) === "attachment" || asString(item.data.itemType) === "note") continue;
     const itemDoi = normalizeDoi(asNullableString(item.data.DOI));
@@ -3301,19 +3788,72 @@ export function findLiteratureDuplicates(record: Pick<LiteratureRecord, "title" 
     const authors = zoteroAuthors(item.data);
     const year = readYear(item.data.date);
     if (record.doi && itemDoi && record.doi === itemDoi) {
-      candidates.push({ itemKey: item.key, title, authors, year, doi: itemDoi, score: 1, reason: "doi" });
+      doiMatches.push({ itemKey: item.key, title, authors, year, doi: itemDoi, score: 1, reason: "doi" });
       continue;
     }
-    if (itemHashes.includes(record.sha256)) {
-      candidates.push({ itemKey: item.key, title, authors, year, doi: itemDoi, score: 0.99, reason: "hash" });
+    const doiConflict = Boolean(record.doi && itemDoi && record.doi !== itemDoi);
+    const childHashes = attachmentHashes.get(item.key);
+    const attachmentHashMatches = Boolean(childHashes && ([...childHashes.md5].some((md5) => localMd5s.has(md5)) || [...childHashes.sha256].some((sha256) => localSha256s.has(sha256))));
+    if (itemHashes.some((hash) => localSha256s.has(hash.toLocaleLowerCase())) || attachmentHashMatches) {
+      hashMatches.push({ itemKey: item.key, title, authors, year, doi: itemDoi, score: 0.99, reason: "hash" });
       continue;
     }
     const titleMatches = Boolean(record.title) && normalizeTitle(record.title) === normalizeTitle(title);
     const yearMatches = record.year !== null && year !== null && record.year === year;
     const authorMatches = normalizedFirstAuthor(record.authors).length > 0 && normalizedFirstAuthor(record.authors) === normalizedFirstAuthor(authors);
-    if (titleMatches && yearMatches && authorMatches) candidates.push({ itemKey: item.key, title, authors, year, doi: itemDoi, score: 0.9, reason: "title-author" });
+    if (!doiConflict && titleMatches && yearMatches && authorMatches) metadataMatches.push({ itemKey: item.key, title, authors, year, doi: itemDoi, score: 0.9, reason: "title-author" });
   }
-  return candidates.sort((left, right) => right.score - left.score).slice(0, 10);
+  return (doiMatches.length ? doiMatches : hashMatches.length ? hashMatches : metadataMatches).sort((left, right) => right.score - left.score);
+}
+
+function matchingZoteroAttachmentKey(record: LiteratureRecord, parentKey: string, items: readonly ZoteroItem[]) {
+  const localMd5s = new Set([record.md5, ...record.localCopies.map((copy) => copy.md5 ?? null)].map(normalizeMd5).filter((md5): md5 is string => md5 !== null));
+  const localSha256s = new Set([record.sha256, ...record.localCopies.map((copy) => copy.sha256)].map((hash) => hash.toLocaleLowerCase()));
+  return items.find((item) => {
+    if (asString(item.data.itemType) !== "attachment" || asString(item.data.parentItem) !== parentKey || !zoteroAttachmentLooksLikePdf(item.data)) return false;
+    const md5 = normalizeMd5(item.data.md5);
+    return Boolean(md5 && localMd5s.has(md5)) || zoteroObsUiHashes({ extra: item.data.note }).some((sha256) => localSha256s.has(sha256.toLocaleLowerCase()));
+  })?.key ?? null;
+}
+
+export function reconcileLiteratureRecords(records: readonly LiteratureRecord[], items: readonly ZoteroItem[], serverId: string | null): LiteratureRecord[] {
+  const reconciled = records.map((record) => {
+    if (record.zotero || record.status === "ignored" || record.status === "importing") return record;
+    const duplicateCandidates = findLiteratureDuplicates(record, items);
+    if (duplicateCandidates.length === 1 && serverId) {
+      const candidate = duplicateCandidates[0]!;
+      const preserveStatus = ["failed", "partial-failed", "missing", "imported"].includes(record.status);
+      return {
+        ...record,
+        zotero: { serverId, itemKey: candidate.itemKey, attachmentKey: matchingZoteroAttachmentKey(record, candidate.itemKey, items) },
+        duplicateCandidates: [],
+        status: preserveStatus ? record.status : "matched" as const,
+        error: record.error,
+        updatedAt: Date.now(),
+      };
+    }
+    if (duplicateCandidates.length) {
+      const changed = JSON.stringify(record.duplicateCandidates) !== JSON.stringify(duplicateCandidates) || record.status !== "conflict";
+      return changed ? { ...record, duplicateCandidates, status: "conflict" as const, updatedAt: Date.now() } : record;
+    }
+    if (record.status === "conflict" && record.duplicateCandidates.length) {
+      const status = ["failed", "partial-failed", "missing"].includes(record.status) ? record.status : restoredLiteratureStatus({ analysisSource: record.analysisSource, duplicateCandidates: [] });
+      return { ...record, duplicateCandidates: [], status, updatedAt: Date.now() };
+    }
+    return record;
+  });
+  return coalesceLocalLiteratureRecords(reconciled);
+}
+
+export function unifyLiteratureRecords(records: readonly LiteratureRecord[], items: readonly ZoteroItem[], serverId: string | null): LiteratureUnifiedItem[] {
+  const linkedKeys = new Set<string>();
+  const unified = records.map((record) => {
+    const linked = record.zotero?.serverId === serverId ? items.find((item) => item.key === record.zotero?.itemKey) : undefined;
+    if (linked) linkedKeys.add(linked.key);
+    return localRecordToUnified(record, linked, serverId);
+  });
+  unified.push(...items.filter((item) => !linkedKeys.has(item.key)).map((item) => zoteroItemToUnified(item)).filter((item): item is LiteratureUnifiedItem => item !== null));
+  return unified;
 }
 
 async function setRecordStatus(pluginState: LiteraturePluginState, id: string, status: LiteratureStatus) {
@@ -3421,6 +3961,7 @@ async function importRecordLocked(pluginState: LiteraturePluginState, id: string
   let operation: LiteratureImportOperation | null = null;
   try {
     const zotero = await readZoteroItems();
+    if (!zotero.serverId) throw new Error("当前 Zotero 版本可读取文献，但导入 PDF 需要 Zotero 10 或更新版本。未修改 Zotero 文库。");
     const idempotencyKey = importIdempotencyKey(zotero.serverId, record.sha256);
     operation = record.importOperation?.idempotencyKey === idempotencyKey
       ? { ...record.importOperation }
@@ -3472,6 +4013,7 @@ async function importRecordLocked(pluginState: LiteraturePluginState, id: string
     await persistStore(pluginState);
 
     const [verifiedParent, verifiedAttachment] = await Promise.all([readZoteroItem(operation.parentKey), readZoteroItem(operation.attachmentKey)]);
+    if (!verifiedAttachment.serverId) throw new Error("Zotero 没有返回稳定库 ID，未完成 ObsUI 关联。");
     if (normalizeLiteratureText(asString(verifiedParent.data.title)) !== normalizeLiteratureText(draft.title) || !zoteroObsUiHashes(verifiedParent.data).includes(record.sha256)) throw new Error("Zotero 条目回读验证失败。");
     if (asString(verifiedAttachment.data.itemType) !== "attachment" || asString(verifiedAttachment.data.linkMode) !== "imported_file" || asString(verifiedAttachment.data.parentItem) !== operation.parentKey) throw new Error("Zotero 附件回读验证失败。");
     record.zotero = { serverId: verifiedAttachment.serverId, itemKey: operation.parentKey, attachmentKey: operation.attachmentKey };
@@ -3508,23 +4050,27 @@ async function importRecordLocked(pluginState: LiteraturePluginState, id: string
 async function listLiteratureItems(pluginState: LiteraturePluginState, searchParams: URLSearchParams): Promise<LiteratureItemsResponse> {
   const query = normalizeLiteratureText(searchParams.get("q"));
   const collection = asString(searchParams.get("collection")) ?? "library";
-  const local = pluginState.store.records;
+  let local = pluginState.store.records;
   let zoteroItems: ZoteroItem[] = [];
   let serverId: string | null = null;
+  let zoteroAvailable = false;
   try {
     const result = await readZoteroItems();
     zoteroItems = result.items;
     serverId = result.serverId;
+    zoteroAvailable = true;
   } catch {
     // Local files remain usable when Zotero is closed.
   }
-  const linkedKeys = new Set<string>();
-  const unified = local.map((record) => {
-    const linked = record.zotero?.serverId === serverId ? zoteroItems.find((item) => item.key === record.zotero?.itemKey) : undefined;
-    if (linked) linkedKeys.add(linked.key);
-    return localRecordToUnified(record, linked, serverId);
-  });
-  unified.push(...zoteroItems.filter((item) => !linkedKeys.has(item.key)).map((item) => zoteroItemToUnified(item, serverId!)).filter((item): item is LiteratureUnifiedItem => item !== null));
+  if (zoteroAvailable) {
+    const before = JSON.stringify(local);
+    local = reconcileLiteratureRecords(local, zoteroItems, serverId);
+    if (JSON.stringify(local) !== before) {
+      pluginState.store.records = local;
+      await persistStore(pluginState);
+    }
+  }
+  const unified = unifyLiteratureRecords(local, zoteroItems, serverId);
   const filtered = collection === "all" ? unified : filterLiteratureItems(unified, collection, query);
   return { items: filtered, total: unified.length, checkedAt: Date.now() };
 }
@@ -3535,8 +4081,16 @@ async function runtimeStatus(pluginState: LiteraturePluginState): Promise<Litera
     zoteroConnectionStatus(),
   ]);
   const settings = pluginState.settings;
-  const modelConfigured = (process.env.OLLAMA_MODELS ?? "").trim().replace(/[\\/]+$/, "").toLocaleLowerCase() === normalizedPath(LOCAL_MODEL_ROOT);
-  const counts = countStatuses(pluginState.store.records, zotero.connected ? (await readZoteroItems().then((result) => result.items.filter((item) => asString(item.data.itemType) !== "attachment" && asString(item.data.itemType) !== "note").length).catch(() => 0)) : 0);
+  const modelConfigured = (process.env.OLLAMA_MODELS ?? "").trim().replace(/[\\/]+$/, "").toLocaleLowerCase() === normalizedPath(getLocalModelRoot());
+  const zoteroResult = zotero.connected ? await readZoteroItems().catch(() => null) : null;
+  if (zoteroResult) {
+    const reconciled = reconcileLiteratureRecords(pluginState.store.records, zoteroResult.items, zoteroResult.serverId);
+    if (JSON.stringify(reconciled) !== JSON.stringify(pluginState.store.records)) {
+      pluginState.store.records = reconciled;
+      await persistStore(pluginState);
+    }
+  }
+  const counts = countStatuses(pluginState.store.records, zoteroResult?.items ?? [], zoteroResult?.serverId ?? null);
   return {
     settings: {
       version: 2,
@@ -3580,7 +4134,7 @@ function startModelDownload(pluginState: LiteraturePluginState, value: unknown) 
   pluginState.modelJobs.set(job.id, job);
   let child: ChildProcessWithoutNullStreams;
   try {
-    child = spawn(ollamaExecutable, ["pull", modelName], { windowsHide: true, env: { ...process.env, OLLAMA_MODELS: LOCAL_MODEL_ROOT } });
+    child = spawn(ollamaExecutable(), ["pull", modelName], { windowsHide: true, env: { ...process.env, OLLAMA_MODELS: getLocalModelRoot() } });
   } catch (error) {
     job.status = "failed";
     job.output = safeError(error);
@@ -3610,6 +4164,7 @@ export function createLiteraturePlugin(): Plugin {
     folderPickerPromise: null,
     organizationPromise: null,
     stateWriteTail: Promise.resolve(),
+    duplicateMutationTail: Promise.resolve(),
     importTail: Promise.resolve(),
     taskWriteTail: Promise.resolve(),
     discussionWriteTail: Promise.resolve(),

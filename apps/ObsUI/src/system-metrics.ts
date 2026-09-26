@@ -16,6 +16,8 @@ export type SystemSensor = {
   source: SystemSensorSource;
   sourceLabel: string;
   role: string | null;
+  deviceId?: string;
+  deviceName?: string;
 };
 
 export type SystemSensorSources = {
@@ -44,12 +46,9 @@ export const SYSTEM_SENSOR_SELECTION_STORAGE_KEY = "obsui.system-sensor-card.v5"
 export const SYSTEM_SENSOR_RECOMMENDATION_STORAGE_KEY = "obsui.system-sensor-card.recommended.v1";
 // Keep the summary configurable without making the card unusably tall; the picker can now hold a useful set of readings beyond the original eight-item cap.
 export const SYSTEM_SENSOR_SUMMARY_LIMIT = 16;
-export const SYSTEM_SENSOR_TEMPERATURE_LIMIT = 5;
-// Version 4 adds the trusted storage-health role to the default summary when a
-// monitor exposes a real remaining-life counter.
-export const SYSTEM_SENSOR_SUMMARY_DEFAULTS_VERSION = 4;
-// Version 6 also replaces the first LPC temperature with the actual mainboard sensor.
-export const SYSTEM_SENSOR_TEMPERATURE_DEFAULTS_VERSION = 6;
+export const SYSTEM_SENSOR_TEMPERATURE_LIMIT = 8;
+export const SYSTEM_SENSOR_SUMMARY_DEFAULTS_VERSION = 7;
+export const SYSTEM_SENSOR_TEMPERATURE_DEFAULTS_VERSION = 9;
 
 const metricNames: SystemMetricName[] = ["cpu", "gpu", "memory", "disk"];
 const sensorCategories: SystemSensorCategory[] = ["cpu", "gpu", "memory", "motherboard", "storage", "system"];
@@ -78,10 +77,13 @@ function parseSensor(payload: unknown): SystemSensor | null {
   const source = typeof record.source === "string" && sensorSources.includes(record.source as SystemSensorSource) ? record.source as SystemSensorSource : null;
   const sourceLabel = asNonEmptyString(record.sourceLabel, 80);
   const role = record.role === null || record.role === undefined ? null : asNonEmptyString(record.role, 80);
+  const deviceId = record.deviceId === undefined ? undefined : asNonEmptyString(record.deviceId, 120);
+  const deviceName = record.deviceName === undefined ? undefined : asNonEmptyString(record.deviceName, 240);
   if (!id || !label || !category || !kind || !unit || !source || !sourceLabel || role === undefined) return null;
+  if ((record.deviceId !== undefined && !deviceId) || (record.deviceName !== undefined && !deviceName)) return null;
   const expectedUnit = kind === "clock" ? "MHz" : kind === "voltage" ? "V" : kind === "power" ? "W" : kind === "load" ? "%" : "°C";
   const value = asSensorNumber(record.value, kind);
-  return value === null || unit !== expectedUnit ? null : { id, label, category, kind, value, unit, source, sourceLabel, role };
+  return value === null || unit !== expectedUnit ? null : { id, label, category, kind, value, unit, source, sourceLabel, role, ...(deviceId ? { deviceId } : {}), ...(deviceName ? { deviceName } : {}) };
 }
 
 function parseSources(payload: unknown): SystemSensorSources | null {
@@ -139,11 +141,24 @@ export function normalizeSystemSensorSelection(payload: unknown): SystemSensorSe
 }
 
 export function defaultSystemSensorSelection(sensors: SystemSensor[]): SystemSensorSelection {
-  const byRole = (roles: string[], kind?: SystemSensorKind) => roles.map((role) => sensors.find((sensor) => sensor.role === role && (!kind || sensor.kind === kind))).filter((sensor): sensor is SystemSensor => Boolean(sensor));
-  const summaryPreferred = byRole(["cpu-clock", "cpu-voltage", "cpu-load", "cpu-power", "gpu-core-clock", "gpu-memory-clock", "gpu-power", "memory-load", "gpu-load", "disk-load", "storage-health"]);
-  const summaryFallback = sensors.filter((sensor) => sensor.kind !== "temperature" && sensor.role !== null && !summaryPreferred.some((preferred) => preferred.id === sensor.id));
-  const temperaturePreferred = byRole(["cpu-temperature", "gpu-temperature", "motherboard-temperature", "storage-temperature", "memory-temperature"], "temperature");
-  const temperatureFallback = sensors.filter((sensor) => sensor.kind === "temperature" && !temperaturePreferred.some((preferred) => preferred.id === sensor.id));
+  const firstByRole = (role: string, kind?: SystemSensorKind) => sensors.find((sensor) => sensor.role === role && (!kind || sensor.kind === kind));
+  const addUnique = (target: SystemSensor[], values: Array<SystemSensor | undefined>) => {
+    values.forEach((sensor) => { if (sensor && !target.some((item) => item.id === sensor.id)) target.push(sensor); });
+  };
+  const summaryPreferred: SystemSensor[] = [];
+  const cpuVoltage = firstByRole("cpu-voltage");
+  addUnique(summaryPreferred, [cpuVoltage && !cpuVoltage.id.startsWith("unavailable:") ? cpuVoltage : firstByRole("cpu-vid") ?? cpuVoltage, ...["cpu-load", "gpu-load", "gpu-memory-load", "memory-load"].map((role) => firstByRole(role))]);
+  addUnique(summaryPreferred, sensors
+    .filter((sensor) => sensor.category === "storage" && sensor.role === "storage-health")
+    .sort((left, right) => (left.deviceName ?? left.label).localeCompare(right.deviceName ?? right.label, "zh-CN") || (left.role ?? "").localeCompare(right.role ?? "")));
+  addUnique(summaryPreferred, ["cpu-clock", "cpu-power", "gpu-core-clock", "gpu-memory-clock", "gpu-power"].map((role) => firstByRole(role)));
+  const summaryFallback = sensors.filter((sensor) => sensor.kind !== "temperature" && sensor.role !== null && sensor.role !== "disk-load" && !summaryPreferred.some((preferred) => preferred.id === sensor.id));
+  const temperaturePreferred: SystemSensor[] = [];
+  addUnique(temperaturePreferred, ["cpu-temperature", "gpu-temperature", "motherboard-temperature", "memory-temperature"].map((role) => firstByRole(role, "temperature")));
+  addUnique(temperaturePreferred, sensors
+    .filter((sensor) => sensor.category === "storage" && sensor.role === "storage-temperature")
+    .sort((left, right) => (left.deviceName ?? left.label).localeCompare(right.deviceName ?? right.label, "zh-CN")));
+  const temperatureFallback = sensors.filter((sensor) => sensor.kind === "temperature" && sensor.category !== "cpu" && !temperaturePreferred.some((preferred) => preferred.id === sensor.id));
   return {
     summary: [...summaryPreferred, ...summaryFallback].slice(0, SYSTEM_SENSOR_SUMMARY_LIMIT).map((sensor) => sensor.id),
     temperatures: [...temperaturePreferred, ...temperatureFallback].slice(0, SYSTEM_SENSOR_TEMPERATURE_LIMIT).map((sensor) => sensor.id),

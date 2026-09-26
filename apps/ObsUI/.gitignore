@@ -7,3 +7,13 @@ coverage/
 .DS_Store
 *.local
 data/
+# Machine-specific state and editor files.
+.idea/
+.vscode/
+*.sqlite
+*.sqlite3
+*.db
+*.db-*
+*.tmp
+credentials.dat
+migration/obsui-state-*.json

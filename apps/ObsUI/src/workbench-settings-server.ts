@@ -1,20 +1,28 @@
 import { randomUUID } from "node:crypto";
 import { execFile, spawn } from "node:child_process";
 import { once } from "node:events";
-import { access, mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { access } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import type { Plugin } from "vite";
-import { LITERATURE_DATABASE_ROOT } from "./literature";
+import { getLiteratureDatabaseRoot } from "./literature";
+import { readJsonState, writeJsonState } from "./json-state";
 import { DEFAULT_STARTUP_SETTINGS, type CustomStartupApplication, type StartupApplicationId, type StartupApplicationStatus, type WorkbenchStartupSettings } from "./workbench-settings";
 
 const execFileAsync = promisify(execFile);
-const startupSettingsPath = join(LITERATURE_DATABASE_ROOT, "workbench-startup-settings.json");
+const startupSettingsPath = () => join(getLiteratureDatabaseRoot(), "workbench-startup-settings.json");
 const startupShortcutName = "ObsUI-Autostart.lnk";
 const applicationLabels: Record<StartupApplicationId, string> = { zotero: "Zotero", flclash: "FlClash", ollama: "Ollama" };
 let companionLaunchPromise: Promise<CompanionLaunchReport> | null = null;
+let settingsMutationTail: Promise<void> = Promise.resolve();
+
+function enqueueSettingsMutation<T>(mutation: () => Promise<T>): Promise<T> {
+  const result = settingsMutationTail.catch(() => undefined).then(mutation);
+  settingsMutationTail = result.then(() => undefined, () => undefined);
+  return result;
+}
 
 type CompanionLaunchReport = {
   attempted: string[];
@@ -55,16 +63,12 @@ function normalizeStartupSettings(value: unknown): WorkbenchStartupSettings {
   };
 }
 
-async function readSettings() {
-  try { return normalizeStartupSettings(JSON.parse(await readFile(startupSettingsPath, "utf8"))); }
-  catch { return structuredClone(DEFAULT_STARTUP_SETTINGS); }
+export async function readSettings() {
+  return normalizeStartupSettings(await readJsonState(startupSettingsPath(), DEFAULT_STARTUP_SETTINGS, (value) => isRecord(value) && isRecord(value.applications)));
 }
 
 async function writeSettings(settings: WorkbenchStartupSettings) {
-  await mkdir(dirname(startupSettingsPath), { recursive: true });
-  const temporaryPath = `${startupSettingsPath}.${process.pid}.tmp`;
-  await writeFile(temporaryPath, JSON.stringify(settings, null, 2), "utf8");
-  await rename(temporaryPath, startupSettingsPath);
+  await writeJsonState(startupSettingsPath(), settings);
 }
 
 function sendJson(response: ServerResponse, status: number, payload: unknown) {
@@ -319,9 +323,12 @@ export function createWorkbenchSettingsPlugin(options: Options): Plugin {
         try {
           const application = await selectCustomApplication();
           if (!application) return sendJson(response, 200, { cancelled: true });
-          const settings = await readSettings();
-          const next = { ...settings, customApplications: [...settings.customApplications.filter((item) => item.path.toLocaleLowerCase() !== application.path.toLocaleLowerCase()), application] };
-          await writeSettings(next);
+          const next = await enqueueSettingsMutation(async () => {
+            const settings = await readSettings();
+            const updated = { ...settings, customApplications: [...settings.customApplications.filter((item) => item.path.toLocaleLowerCase() !== application.path.toLocaleLowerCase()), application] };
+            await writeSettings(updated);
+            return updated;
+          });
           sendJson(response, 200, { ...(await statePayload(options, next)), message: `${application.label} 已添加。` });
         } catch (error) { sendJson(response, 400, { message: error instanceof Error ? error.message : "无法添加应用。" }); }
       })();
@@ -333,8 +340,18 @@ export function createWorkbenchSettingsPlugin(options: Options): Plugin {
       return void (async () => {
         try {
           const settings = normalizeStartupSettings(await readJsonBody(request));
-          await syncStartupShortcut(settings.windowsStartup, options);
-          await writeSettings(settings);
+          await enqueueSettingsMutation(async () => {
+            const previous = await readSettings();
+            await syncStartupShortcut(settings.windowsStartup, options);
+            try { await writeSettings(settings); }
+            catch (error) {
+              try { await syncStartupShortcut(previous.windowsStartup, options); }
+              catch (rollbackError) {
+                throw new Error(`启动设置保存失败，快捷方式回滚也失败：${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`, { cause: error });
+              }
+              throw error;
+            }
+          });
           sendJson(response, 200, { ...(await statePayload(options, settings)), message: "启动设置已保存，将在下次启动 ObsUI 时生效。" });
         } catch (error) {
           sendJson(response, 400, { message: error instanceof Error ? error.message : "无法保存启动设置。" });

@@ -1,11 +1,12 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { lstat, readdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
+import { lstat, readdir, readFile, realpath, stat } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { basename, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 import type { Plugin } from "vite";
 import { parseGitLatestCommit, parseGitStatusPorcelain, redactRemoteUrl, type GitStatusResponse, type ObsidianGraph, type ObsidianNote, type ObsidianVaultEntry, type RepositoryFolderEntry } from "./repositories";
+import { writeTextAtomically } from "./atomic-file";
 
 const execFileAsync = promisify(execFile);
 const gitTimeoutMs = 5_000;
@@ -587,7 +588,7 @@ async function writeVaultNote(request: IncomingMessage, response: ServerResponse
     if (currentVersion !== payload.version) {
       return sendJson(response, 409, { status: "conflict", message: "磁盘上的文档已发生变化。你的编辑内容仍保留，请先重新读取并核对。" });
     }
-    await writeFile(targetPath, payload.content, "utf8");
+    await writeTextAtomically(targetPath, payload.content);
     const savedContent = Buffer.from(payload.content, "utf8");
     const metadata = await stat(targetPath);
     sendJson(response, 200, {

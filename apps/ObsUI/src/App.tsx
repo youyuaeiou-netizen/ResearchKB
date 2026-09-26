@@ -251,6 +251,7 @@ function useObsUiHWiNFOLifecycle() {
     // the replacement session that is still active.
     const pageToken = createObsUiPageToken();
     let active = false;
+    let releaseSent = false;
     let eventStream: EventSource | null = null;
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
     const bodyText = JSON.stringify({ pageToken });
@@ -266,6 +267,7 @@ function useObsUiHWiNFOLifecycle() {
     const openSession = () => {
       if (active) return;
       active = true;
+      releaseSent = false;
       if (typeof EventSource === "function") {
         eventStream = new EventSource(`/api/hwinfo/session?pageToken=${encodeURIComponent(pageToken)}`, { withCredentials: true });
         eventStream.addEventListener("error", () => {
@@ -292,16 +294,18 @@ function useObsUiHWiNFOLifecycle() {
     };
 
     const closeSession = () => {
-      if (!active) return;
       active = false;
       if (retryTimer !== null) {
         clearTimeout(retryTimer);
         retryTimer = null;
       }
+      if (releaseSent) return;
+      releaseSent = true;
       const body = new Blob([bodyText], { type: "application/json" });
       // Queue the explicit close before aborting SSE. On a fast browser/app
-      // shutdown the SSE `close` event may never reach Vite, while Beacon or a
-      // keepalive request can still release the page token.
+      // shutdown the SSE `close` event may never reach Vite; the idempotent
+      // release also covers a request whose response was lost after the server
+      // had already registered this page token.
       const beaconQueued = typeof navigator.sendBeacon === "function" && navigator.sendBeacon("/api/hwinfo/close", body);
       if (!beaconQueued) {
         void fetch("/api/hwinfo/close", { method: "POST", body: bodyText, headers: { "Content-Type": "application/json" }, credentials: "same-origin", keepalive: true }).catch(() => undefined);
@@ -573,9 +577,11 @@ function App() {
   const [state, setState] = useState<AppState>(() => createInitialState());
   const [workbenchSettings, setWorkbenchSettings] = useState<WorkbenchSettings>(() => structuredClone(DEFAULT_WORKBENCH_SETTINGS));
   const [workbenchSettingsReady, setWorkbenchSettingsReady] = useState(false);
+  const [workbenchSettingsPersistenceEnabled, setWorkbenchSettingsPersistenceEnabled] = useState(false);
   const [literatureStartup, setLiteratureStartup] = useState<LiteratureStartupState>({ status: "loading", zoteroEnabled: null, runtime: null, items: null });
   const [settingsSection, setSettingsSection] = useState<SettingsSection>("appearance");
   const [ready, setReady] = useState(false);
+  const [statePersistenceEnabled, setStatePersistenceEnabled] = useState(false);
   const [notice, setNotice] = useState("");
   const [storageError, setStorageError] = useState<string | null>(null);
   const [automationRunning, setAutomationRunning] = useState(false);
@@ -618,8 +624,8 @@ function App() {
   const closeWorkspace = () => setView("overview");
 
   useEffect(() => {
-    loadAppState().then((loaded) => { setState(loaded); setStorageError(null); setReady(true); }).catch(() => {
-      const message = "本地数据读取失败，当前显示的是临时示例数据。重启前请先导出备份。";
+    loadAppState().then((loaded) => { setState(loaded); setStorageError(null); setStatePersistenceEnabled(true); setReady(true); }).catch(() => {
+      const message = "本地数据读取失败，当前显示的是临时示例数据；为保护原数据，自动保存已暂停。请恢复存储访问，或导入备份/确认恢复示例数据。";
       setNotice(message);
       setStorageError(message);
       setReady(true);
@@ -628,8 +634,8 @@ function App() {
 
   useEffect(() => {
     loadWorkbenchSettings()
-      .then((loaded) => setWorkbenchSettings(loaded))
-      .catch(() => setNotice("工作台设置读取失败，当前使用默认设置。"))
+      .then((loaded) => { setWorkbenchSettings(loaded); setWorkbenchSettingsPersistenceEnabled(true); })
+      .catch(() => setNotice("工作台设置读取失败，当前使用临时默认值；自动保存已暂停以保护原设置。恢复存储后请刷新再修改。"))
       .finally(() => setWorkbenchSettingsReady(true));
   }, []);
 
@@ -660,15 +666,15 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (!workbenchSettingsReady) return;
+    if (!workbenchSettingsReady || !workbenchSettingsPersistenceEnabled) return;
     const timer = window.setTimeout(() => {
       saveWorkbenchSettings(workbenchSettings).catch(() => setNotice("工作台设置保存失败，请检查浏览器存储权限。"));
     }, 160);
     return () => window.clearTimeout(timer);
-  }, [workbenchSettings, workbenchSettingsReady]);
+  }, [workbenchSettings, workbenchSettingsReady, workbenchSettingsPersistenceEnabled]);
 
   useEffect(() => {
-    if (!ready) return;
+    if (!ready || !statePersistenceEnabled) return;
     const timer = window.setTimeout(() => {
       saveAppState(state).then(() => setStorageError(null)).catch(() => {
         const message = "本地数据保存失败，请检查浏览器存储权限。当前修改可能无法在重启后保留。";
@@ -677,7 +683,7 @@ function App() {
       });
     }, 160);
     return () => window.clearTimeout(timer);
-  }, [ready, state]);
+  }, [ready, state, statePersistenceEnabled]);
 
   useEffect(() => {
     if (tabModalV2Enabled || !automationRunning) return;
@@ -754,6 +760,13 @@ function App() {
   }, [modalOpen]);
 
   const commit = (next: AppState) => setState(touch(next));
+  const updateWorkbenchSettings = (next: WorkbenchSettings) => {
+    if (!workbenchSettingsPersistenceEnabled) {
+      setNotice("工作台设置未能从本地存储读取，本次修改未保存；恢复存储后请刷新再试。");
+      return;
+    }
+    setWorkbenchSettings(next);
+  };
   const activeProjects = state.projects.filter((project) => project.status === "active");
   const openTasks = state.tasks.filter((task) => !isCompletedTask(task));
   const dashboardTasks = selectDashboardTasks(state.tasks);
@@ -863,6 +876,10 @@ function App() {
   };
 
   const exportData = () => {
+    if (!statePersistenceEnabled) {
+      setNotice("本地数据读取失败；当前内容只是临时示例数据，不能导出为有效备份。");
+      return;
+    }
     const blob = new Blob([JSON.stringify(createBackup(state), null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a"); link.href = url; link.download = `obsui-backup-${today()}.json`; link.click(); URL.revokeObjectURL(url);
@@ -873,13 +890,22 @@ function App() {
     const file = event.target.files?.[0]; event.target.value = ""; if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
-      try { const imported = parseBackup(JSON.parse(String(reader.result))); if (!window.confirm("导入后会替换当前 ObsUI 数据，是否继续？")) return; setState(imported); setNotice("备份已导入。"); }
+      try { const imported = parseBackup(JSON.parse(String(reader.result))); if (!window.confirm("导入后会替换当前 ObsUI 数据，是否继续？")) return; setStatePersistenceEnabled(true); setState(imported); setNotice("备份已导入。"); }
       catch (error) { setNotice(error instanceof Error ? error.message : "备份文件无法读取，现有数据未改变。"); }
     };
     reader.onerror = () => setNotice("备份文件读取失败，现有数据未改变。"); reader.readAsText(file);
   };
 
-  const resetDemo = () => { if (window.confirm("清空当前 ObsUI 数据并恢复示例数据？请先导出备份。")) { setState(createInitialState()); setNotice("已恢复示例数据。"); } };
+  const resetDemo = () => {
+    const message = statePersistenceEnabled
+      ? "清空当前 ObsUI 数据并恢复示例数据？请先导出备份。"
+      : "本地数据读取失败，当前仅显示临时示例数据。确认后会用示例数据覆盖此浏览器中的 ObsUI 主数据，是否继续？";
+    if (window.confirm(message)) {
+      setStatePersistenceEnabled(true);
+      setState(createInitialState());
+      setNotice("已恢复示例数据。");
+    }
+  };
   const requestProxyLaunch = async (endpoint: string, label: string): Promise<ProxyLaunchResult> => {
     const fallback = `无法启动或恢复 ${label}。请检查本机 .env.local 配置。`;
     try {
@@ -996,7 +1022,7 @@ function App() {
       {notice && !tabModalV2Enabled && <button className="notice" onClick={() => setNotice("")} title="关闭提示">{notice}<span>×</span></button>}
       <input ref={importRef} type="file" accept="application/json" hidden onChange={importData} />
     </main>
-    {view === "settings" && <SettingsCenter initialSection={settingsSection} settings={workbenchSettings} onSettingsChange={setWorkbenchSettings} onClose={closeWorkspace} onExport={exportData} onImport={() => importRef.current?.click()} onReset={resetDemo} updatedAt={state.updatedAt} dialogRef={modalRef} closeRef={closeDeviceRef} />}
+    {view === "settings" && <SettingsCenter initialSection={settingsSection} settings={workbenchSettings} onSettingsChange={updateWorkbenchSettings} onClose={closeWorkspace} onExport={exportData} onImport={() => importRef.current?.click()} onReset={resetDemo} updatedAt={state.updatedAt} dialogRef={modalRef} closeRef={closeDeviceRef} />}
     {modalOpen && view !== "settings" && tabModalV2Enabled && <TabModalV2
       activeTab={v2TabFromView(view)}
       activeView={view}

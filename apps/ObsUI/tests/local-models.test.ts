@@ -2,10 +2,10 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_LOCAL_MODEL_SETTINGS, groupLocalModels, localModelIdentity, localModelThinkingFor, normalizeLocalModelSettings, parseLocalModelSettings, parseLocalModelState, withLocalModelThinking } from "../src/local-models";
 
 describe("local model settings", () => {
-  it("uses the 64K desktop profile by default", () => {
+  it("uses the 8K laptop profile by default", () => {
     expect(DEFAULT_LOCAL_MODEL_SETTINGS).toMatchObject({
-      contextLength: 65_536,
-      maxOutputTokens: 8_192,
+      contextLength: 8_192,
+      maxOutputTokens: 4_096,
       thinking: "medium",
     });
   });
@@ -44,7 +44,7 @@ describe("local model settings", () => {
 
   it("strictly parses settings received from the persistence API", () => {
     expect(parseLocalModelSettings(DEFAULT_LOCAL_MODEL_SETTINGS)).toEqual(DEFAULT_LOCAL_MODEL_SETTINGS);
-    expect(parseLocalModelSettings({ ...DEFAULT_LOCAL_MODEL_SETTINGS, contextLength: 32_768 })).toBeNull();
+    expect(parseLocalModelSettings({ ...DEFAULT_LOCAL_MODEL_SETTINGS, contextLength: 32_768 })).toMatchObject({ contextLength: 32_768 });
     expect(parseLocalModelSettings({ ...DEFAULT_LOCAL_MODEL_SETTINGS, contextLength: 123 })).toBeNull();
     expect(parseLocalModelSettings({ ...DEFAULT_LOCAL_MODEL_SETTINGS, thinking: "extreme" })).toBeNull();
     expect(parseLocalModelSettings({ ...DEFAULT_LOCAL_MODEL_SETTINGS, thinkingByModel: { "qwen3.5:9b": "extreme" } })).toBeNull();

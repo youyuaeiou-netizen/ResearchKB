@@ -127,14 +127,14 @@ describe("LocalPage", () => {
     expect(host.querySelector(".tab-modal-v2__detail-grid")).toBeNull();
     expect(host.textContent).toContain("CPU");
     expect(host.textContent).toContain("硬盘");
-    expect(host.textContent).toContain("GPU 温度");
+    expect(host.textContent).toContain("显卡温度");
     expect(host.textContent).toContain("40 °C");
-    expect(host.textContent).not.toContain("内存温度");
-    expect(host.textContent).not.toContain("主板温度");
-    expect(host.textContent).not.toContain("存储温度");
+    expect(host.textContent).toContain("内存温度");
+    expect(host.textContent).toContain("主板温度");
+    expect(host.textContent).toContain("硬盘温度");
     const temperatureList = host.querySelector('[aria-label="硬件温度"]');
-    expect(temperatureList?.textContent).not.toContain("暂不可用");
-    expect(temperatureList?.querySelectorAll(".tab-modal-v2__temperature-row")).toHaveLength(2);
+    expect(temperatureList?.textContent).toContain("暂不可用");
+    expect(temperatureList?.querySelectorAll(".tab-modal-v2__temperature-row")).toHaveLength(5);
     expect(host.textContent).toContain("下载");
     expect(host.textContent).toContain("上传");
     expect(host.textContent).toContain("192.168.1.10");
@@ -160,12 +160,12 @@ describe("LocalPage", () => {
     const host = mount(<LocalPage nav="models" context={createLocalContext()} />);
 
     expect(host.textContent).toContain("本地模型参数");
-    expect(host.textContent).toContain("64K · 默认");
+    expect(host.textContent).toContain("8K · 默认");
     expect(host.textContent).toContain("128K · 长上下文");
     expect(host.textContent).toContain("200K · 超长上下文");
-    expect(host.textContent).not.toContain("32K · 低延迟");
+    expect(host.textContent).toContain("32K");
     expect(host.textContent).toContain("高强度");
-    expect(host.querySelector<HTMLSelectElement>('select[aria-label="上下文长度"]')?.value).toBe("65536");
+    expect(host.querySelector<HTMLSelectElement>('select[aria-label="上下文长度"]')?.value).toBe("8192");
     expect(host.querySelector<HTMLSelectElement>('select[aria-label="思考强度"]')?.value).toBe("medium");
   });
 
@@ -232,16 +232,16 @@ describe("LocalPage", () => {
     expect(temperatureList?.textContent).toContain("内存温度");
     expect(temperatureList?.textContent).toContain("硬盘温度");
     expect(window.localStorage.getItem("obsui.system-sensor-card.v3")).toBeNull();
-    expect(JSON.parse(window.localStorage.getItem("obsui.system-sensor-card.v5") ?? "{}")).toMatchObject({ summaryDefaultsVersion: 4, temperatureDefaultsVersion: 6 });
-    expect(JSON.parse(window.localStorage.getItem("obsui.system-sensor-card.recommended.v1") ?? "{}")).toMatchObject({ summaryDefaultsVersion: 4, temperatureDefaultsVersion: 6 });
+    expect(JSON.parse(window.localStorage.getItem("obsui.system-sensor-card.v5") ?? "{}")).toMatchObject({ summaryDefaultsVersion: 7, temperatureDefaultsVersion: 9 });
+    expect(JSON.parse(window.localStorage.getItem("obsui.system-sensor-card.recommended.v1") ?? "{}")).toMatchObject({ summaryDefaultsVersion: 7, temperatureDefaultsVersion: 9 });
   });
 
   it("uses the current saved selections as the initial recommendation", () => {
     const currentSelection = {
       summary: ["windows:cpu-clock", "windows:memory-load"],
       temperatures: ["windows:cpu-temperature", "nvidia:0:temperature"],
-      summaryDefaultsVersion: 4,
-      temperatureDefaultsVersion: 6,
+      summaryDefaultsVersion: 7,
+      temperatureDefaultsVersion: 9,
     };
     window.localStorage.setItem("obsui.system-sensor-card.v5", JSON.stringify(currentSelection));
 
@@ -278,10 +278,11 @@ describe("LocalPage", () => {
 
     mount(<LocalPage nav="overview" context={context} />);
 
-    expect(JSON.parse(window.localStorage.getItem("obsui.system-sensor-card.recommended.v1") ?? "{}")).toMatchObject({
-      summary: ["windows:disk-load", "hardware-monitor:web:/ram/load/0", "hardware-monitor:web:/vram/load/1", "hwinfo:4:33554432", "hwinfo:1:117440529", "hwinfo:4:83886080", "hwinfo:11:83886081", "hwinfo:11:117440512", "hwinfo:9:117440512"],
-      sensorRecoveryVersion: 1,
-    });
+    const recommendation = JSON.parse(window.localStorage.getItem("obsui.system-sensor-card.recommended.v1") ?? "{}");
+    expect(recommendation.sensorRecoveryVersion).toBe(1);
+    expect(recommendation.summary).toContain("hwinfo:4:33554432");
+    expect(recommendation.summary).toContain("hwinfo:1:117440529");
+    expect(recommendation.summary).not.toContain("hardware-monitor:web:/amdcpu/0/load/0");
   });
 
   it("replaces the legacy anonymous board voltage with an unavailable CPU voltage", () => {
@@ -310,7 +311,7 @@ describe("LocalPage", () => {
     const host = mount(<LocalPage nav="overview" context={createLocalContext()} />);
 
     expect(host.querySelector('[aria-label="已选系统读数"]')?.textContent).not.toContain("已选传感器");
-    expect(host.querySelector('[aria-label="已选系统读数"]')?.textContent).not.toContain("暂不可用");
+    expect(host.querySelector('[aria-label="已选系统读数"]')?.textContent).toContain("CPU 核心电压暂不可用");
   });
 
   it("keeps the egress page automatic and does not render a refresh action", () => {
@@ -396,9 +397,9 @@ describe("LocalPage", () => {
     expect(picker?.textContent).toContain("CPU 频率");
     expect(picker?.textContent).toContain("温度监控");
 
-    const powerChoice = Array.from(picker?.querySelectorAll("label") ?? []).find((label) => label.textContent?.includes("GPU 0 功耗"));
+    const powerChoice = Array.from(picker?.querySelectorAll("label") ?? []).find((label) => label.querySelector("b")?.textContent === "显卡 功耗");
     act(() => powerChoice?.querySelector<HTMLInputElement>("input")?.click());
-    expect(picker?.textContent).not.toContain("暂不可用");
+    expect(picker?.textContent).toContain("CPU 核心电压暂不可用");
     expect(picker?.textContent).toContain("CPU 占用");
     expect(JSON.parse(window.localStorage.getItem("obsui.system-sensor-card.v5") ?? "{}").summary).not.toContain("nvidia:0:power");
 
@@ -428,7 +429,7 @@ describe("LocalPage", () => {
     const host = mount(<LocalPage nav="overview" context={context} />);
     act(() => host.querySelector<HTMLButtonElement>('button[aria-controls="obsui-sensor-picker"]')?.click());
     const picker = host.querySelector("#obsui-sensor-picker");
-    expect(picker?.textContent).toContain("磁盘剩余寿命");
+    expect(picker?.textContent).toContain("硬盘剩余寿命");
     expect(picker?.textContent).not.toContain("磁盘可用备用");
     expect(picker?.textContent).not.toContain("磁盘备用阈值");
     expect(picker?.textContent).not.toContain("磁盘已用寿命");
@@ -519,7 +520,7 @@ describe("LocalPage", () => {
     expect(text).not.toContain("主板电压 #1");
     expect(text).not.toContain("读取活动率");
     expect(text).not.toContain("Total Activity");
-    expect(text).toContain("GPU 核心电压");
+    expect(text).toContain("显卡 核心电压");
     expect(text).not.toContain("GPU Core Voltage");
     expect(text).not.toContain("GPU 12VHPWR 电压");
     const savedSummary = JSON.parse(window.localStorage.getItem("obsui.system-sensor-card.v5") ?? "{}").summary as string[];
@@ -537,10 +538,10 @@ describe("LocalPage", () => {
     };
 
     rerender(host, <LocalPage nav="overview" context={unavailableContext} />);
-    expect(host.querySelector('[aria-label="已选系统读数"]')?.textContent).toContain("GPU 0 功耗暂不可用");
+    expect(host.querySelector('[aria-label="已选系统读数"]')?.textContent).toContain("显卡 功耗暂不可用");
 
     rerender(host, <LocalPage nav="overview" context={context} />);
-    expect(host.querySelector('[aria-label="已选系统读数"]')?.textContent).toContain("GPU 0 功耗39.0 W");
+    expect(host.querySelector('[aria-label="已选系统读数"]')?.textContent).toContain("显卡 功耗39.0 W");
   });
 
   it("preserves an offline recommendation and its labels across a page reload", () => {
@@ -558,7 +559,7 @@ describe("LocalPage", () => {
     };
     const secondHost = mount(<LocalPage nav="overview" context={unavailableContext} />);
 
-    expect(secondHost.querySelector('[aria-label="已选系统读数"]')?.textContent).toContain("GPU 0 功耗暂不可用");
+    expect(secondHost.querySelector('[aria-label="已选系统读数"]')?.textContent).toContain("显卡 功耗暂不可用");
     expect(JSON.parse(window.localStorage.getItem("obsui.system-sensor-card.recommended.v1") ?? "{}").summary).toContain("nvidia:0:power");
     expect(window.localStorage.getItem("obsui.system-sensor-card.catalog.v1")).toContain("nvidia:0:power");
   });

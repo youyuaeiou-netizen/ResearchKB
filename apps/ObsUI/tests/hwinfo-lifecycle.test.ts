@@ -79,11 +79,12 @@ describe("hardware monitor lifecycle launch boundary", () => {
     expect(taskInstaller).not.toContain("$stateDirectory = Join-Path $env:TEMP 'ObsUI'");
     expect(taskInstaller).toContain("*S-1-5-32-545:(OI)(CI)RX");
     expect(taskInstaller).toContain("if ([int]$request.pid -eq $process.Id)");
-    expect(taskInstaller).toContain("Stop-AllObsUiHWiNFO");
-    expect(taskInstaller).toContain("supportsStopAll");
+    expect(taskInstaller).toContain("Stop-ObsUiOwnedHWiNFO");
+    expect(taskInstaller).toContain("supportsStopOwned");
+    expect(taskInstaller).not.toContain("Stop-AllObsUiHWiNFO");
     expect(taskInstaller).toContain("task-capabilities.json");
     expect(taskInstaller).toContain("[bool]$request.all");
-    expect(taskInstaller).toContain("if ($stopAllPending)");
+    expect(taskInstaller).toContain("if ([bool]$request.stopOwned -or [bool]$request.all)");
     expect(taskInstaller).toContain("$previousTaskStatus.hwinfoPid");
     expect(taskInstaller).toContain("OBSUI_HWINFO_PATH");
     expect(taskInstaller).not.toContain("C:\\WorkSpace");
@@ -93,8 +94,8 @@ describe("hardware monitor lifecycle launch boundary", () => {
     expect(viteConfig).toContain('"schtasks.exe"');
     expect(viteConfig).toContain("hwinfo-stop.request.json");
     expect(viteConfig).toContain("taskkill.exe");
-    expect(viteConfig).toContain("closeAllHWiNFO");
-    expect(viteConfig).toContain("requestAllHWiNFOStop");
+    expect(viteConfig).toContain("closeManagedHWiNFO");
+    expect(viteConfig).toContain("requestOwnedHWiNFOStopSync");
     expect(viteConfig).toContain("runHWiNFOTaskSync");
     expect(viteConfig).toContain("hwinfoTaskCapabilityFile");
     expect(viteConfig).toContain('join(process.cwd(), ".obsui-runtime", "hwinfo")');
@@ -106,7 +107,7 @@ describe("hardware monitor lifecycle launch boundary", () => {
     expect(viteConfig).toContain("cancelScheduledHWiNFOClose();");
     expect(viteConfig).toContain("scheduleHWiNFORetry");
     expect(taskInstaller).toContain("Test-ObsUiOwnerProcessAlive");
-    expect(taskInstaller).toContain("including ones started outside ObsUI");
+    expect(taskInstaller).not.toContain("including ones started outside ObsUI");
     expect(taskInstaller).toContain("ownerProcessId");
     expect(taskInstaller).toContain("Remove-Item -LiteralPath $ownerPath");
     expect(`${controller}\n${launcher}\n${hiddenLauncher}\n${taskInstaller}\n${viteConfig}\n${workbenchSettingsServer}`).not.toMatch(/-Verb\s+RunAs/i);

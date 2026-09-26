@@ -108,6 +108,30 @@ $localOllamaExecutable = Join-Path $env:USERPROFILE 'AppData\Local\Programs\Olla
 if (Test-Path -LiteralPath $localOllamaExecutable -PathType Leaf) {
     $env:OBSUI_OLLAMA_PATH = $localOllamaExecutable
 }
+
+# If the script is invoked inside Windows Terminal instead of through the
+# desktop VBS shortcut, detach the same launch through that hidden wrapper and
+# let the interactive terminal shell exit immediately.
+if ($env:WT_SESSION -and -not $env:OBSUI_DETACHED_TERMINAL_LAUNCH) {
+    $hiddenLauncher = Join-Path $PSScriptRoot 'start-obsui-hidden.vbs'
+    $hiddenPowerShell = Resolve-ObsUiPowerShellPath
+    if ($hiddenPowerShell -and (Test-Path -LiteralPath $hiddenLauncher -PathType Leaf)) {
+        $env:OBSUI_DETACHED_TERMINAL_LAUNCH = '1'
+        $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+        $startInfo.FileName = Join-Path $env:SystemRoot 'System32\wscript.exe'
+        $startInfo.WorkingDirectory = $appRoot
+        $startInfo.UseShellExecute = $false
+        $startInfo.CreateNoWindow = $true
+        $startInfo.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
+        foreach ($argument in @($hiddenLauncher, $hiddenPowerShell, '-Port', [string]$Port, '-OpenPath', $OpenPath)) {
+            [void]$startInfo.ArgumentList.Add($argument)
+        }
+        if ($NoOpen) { [void]$startInfo.ArgumentList.Add('-NoOpen') }
+        [void][System.Diagnostics.Process]::Start($startInfo)
+        exit 0
+    }
+}
+
 $baseUrl = "http://${hostName}:$Port/"
 $normalizedOpenPath = if ([string]::IsNullOrWhiteSpace($OpenPath)) { '/' } elseif ($OpenPath.StartsWith('/')) { $OpenPath } else { "/$OpenPath" }
 $openUrl = if ($normalizedOpenPath -eq '/') { $baseUrl } else { "$baseUrl$($normalizedOpenPath.TrimStart('/'))" }

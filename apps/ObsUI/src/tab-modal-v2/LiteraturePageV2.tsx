@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import {
   IoAlbumsOutline,
@@ -23,9 +23,10 @@ import {
   IoWarningOutline,
 } from "react-icons/io5";
 import "./literature.css";
-import { LiteratureReader } from "./LiteratureReader";
 import {
   DEFAULT_LOCAL_MODEL,
+  DEFAULT_LOCAL_MODEL_FAMILY,
+  DEFAULT_LOCAL_MODEL_PROFILE,
   filterLiteratureItems,
   formatLiteratureAuthors,
   statusLabel,
@@ -38,6 +39,8 @@ import {
   type LiteratureUnifiedItem,
 } from "../literature";
 import type { WorkbenchSettings } from "../workbench-settings";
+
+const LiteratureReader = lazy(() => import("./LiteratureReader").then(({ LiteratureReader }) => ({ default: LiteratureReader })));
 import { enqueueLiteratureAnalysis } from "../literature-task-store";
 import { hddReasoningEfforts, normalizeHddReasoningEffort, type HddModelOption, type HddReasoningEffort } from "../hdd-models";
 
@@ -69,10 +72,10 @@ const emptyImportDraft: ImportDraft = {
 
 function defaultRuntime(): LiteratureRuntimeStatus {
   return {
-    settings: { version: 2, inboxConfigured: false, inboxDisplayName: null, modelFamily: "qwen3.5:9b", modelProfile: "64k", runtimeTag: DEFAULT_LOCAL_MODEL, deepAnalysisProvider: "ollama", deepAnalysisModel: "", deepAnalysisReasoningEffort: "medium" },
+    settings: { version: 2, inboxConfigured: false, inboxDisplayName: null, modelFamily: DEFAULT_LOCAL_MODEL_FAMILY, modelProfile: DEFAULT_LOCAL_MODEL_PROFILE, runtimeTag: DEFAULT_LOCAL_MODEL, deepAnalysisProvider: "ollama", deepAnalysisModel: "", deepAnalysisReasoningEffort: "medium" },
     watcher: { active: false, lastScanAt: null, error: null },
-    model: { provider: "ollama", status: "unavailable", configured: false, selected: { family: "qwen3.5:9b", profile: "64k", runtimeTag: DEFAULT_LOCAL_MODEL }, families: [], error: "正在读取本地模型状态。" },
-    zotero: { connected: false, authorized: false, serverId: null, version: null, error: "正在读取 Zotero 状态。" },
+    model: { provider: "ollama", status: "unavailable", configured: false, selected: { family: DEFAULT_LOCAL_MODEL_FAMILY, profile: DEFAULT_LOCAL_MODEL_PROFILE, runtimeTag: DEFAULT_LOCAL_MODEL }, families: [], error: "正在读取本地模型状态。" },
+    zotero: { connected: false, authorized: false, writeSupported: false, serverId: null, version: null, error: "正在读取 Zotero 状态。" },
     counts: { detected: 0, analyzing: 0, ready: 0, matched: 0, conflict: 0, importing: 0, imported: 0, failed: 0, "partial-failed": 0, ignored: 0, missing: 0, total: 0, zotero: 0 },
     checkedAt: Date.now(),
   };
@@ -129,8 +132,8 @@ export function LiteraturePageV2({ startupRuntime = null, startupItems = null, s
   const [dialog, setDialog] = useState<LiteratureDialog>(null);
   const [settingsPath, setSettingsPath] = useState("");
   const [obsidianPath, setObsidianPath] = useState("");
-  const [settingsModelFamily, setSettingsModelFamily] = useState(() => cachedView?.runtime.settings.modelFamily ?? "qwen3.5:9b");
-  const [settingsModelProfile, setSettingsModelProfile] = useState(() => cachedView?.runtime.settings.modelProfile ?? "64k");
+  const [settingsModelFamily, setSettingsModelFamily] = useState(() => cachedView?.runtime.settings.modelFamily ?? DEFAULT_LOCAL_MODEL_FAMILY);
+  const [settingsModelProfile, setSettingsModelProfile] = useState(() => cachedView?.runtime.settings.modelProfile ?? DEFAULT_LOCAL_MODEL_PROFILE);
   const [deepAnalysisProvider, setDeepAnalysisProvider] = useState<"ollama" | "codex">(() => startupRuntime?.settings.deepAnalysisProvider ?? cachedView?.runtime.settings.deepAnalysisProvider ?? "ollama");
   const [deepAnalysisModel, setDeepAnalysisModel] = useState(() => startupRuntime?.settings.deepAnalysisModel ?? cachedView?.runtime.settings.deepAnalysisModel ?? "");
   const [deepAnalysisReasoningEffort, setDeepAnalysisReasoningEffort] = useState<HddReasoningEffort>(() => (startupRuntime?.settings.deepAnalysisReasoningEffort as HddReasoningEffort) ?? (cachedView?.runtime.settings.deepAnalysisReasoningEffort as HddReasoningEffort) ?? "medium");
@@ -143,13 +146,18 @@ export function LiteraturePageV2({ startupRuntime = null, startupItems = null, s
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [busyId, setBusyId] = useState("");
+  const [selectedDuplicateIds, setSelectedDuplicateIds] = useState<Set<string>>(() => new Set());
+  const [duplicateTargetKeys, setDuplicateTargetKeys] = useState<Record<string, string>>({});
   const [itemMenuOpen, setItemMenuOpen] = useState(false);
   const [zoteroDeleteTarget, setZoteroDeleteTarget] = useState<LiteratureUnifiedItem | null>(null);
   const [organizationPreview, setOrganizationPreview] = useState<LiteratureOrganizationPreview | null>(null);
   const [folderQuery, setFolderQuery] = useState("");
   const [readerItem, setReaderItem] = useState<LiteratureUnifiedItem | null>(null);
+  const refreshInFlightRef = useRef(false);
 
   const refresh = useCallback(async () => {
+    if (refreshInFlightRef.current) return;
+    refreshInFlightRef.current = true;
     try {
       const [nextRuntime, nextItems] = await Promise.all([
         readApi<LiteratureRuntimeStatus>("/api/literature/status"),
@@ -162,6 +170,8 @@ export function LiteraturePageV2({ startupRuntime = null, startupItems = null, s
       setError("");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "文献接口暂不可用。");
+    } finally {
+      refreshInFlightRef.current = false;
     }
   }, []);
 
@@ -177,7 +187,7 @@ export function LiteraturePageV2({ startupRuntime = null, startupItems = null, s
 
   useEffect(() => {
     if (!hasStartupSnapshot) void refresh();
-    const timer = window.setInterval(() => void refresh(), runtime.zotero.connected ? 15_000 : 1_000);
+    const timer = window.setInterval(() => void refresh(), 30_000);
     return () => window.clearInterval(timer);
   }, [hasStartupSnapshot, refresh, runtime.zotero.connected]);
 
@@ -218,22 +228,52 @@ export function LiteraturePageV2({ startupRuntime = null, startupItems = null, s
   const selectedModelProfiles = selectedModelFamily?.profiles ?? [];
   const codexReasoningOptions = hddReasoningEfforts("codex", deepAnalysisModel, codexModels);
   const baseCollections = useMemo(() => [
-    { id: "library", label: "我的文库", icon: <IoLibraryOutline aria-hidden="true" /> },
+    { id: "library", label: "本地 + Zotero", icon: <IoLibraryOutline aria-hidden="true" /> },
+    { id: "zotero", label: "Zotero", icon: <IoLibraryOutline aria-hidden="true" /> },
     { id: "pending", label: "待归档", icon: <IoTimerOutline aria-hidden="true" /> },
     { id: "ignored", label: "暂不处理", icon: <IoEyeOffOutline aria-hidden="true" /> },
     { id: "missing", label: "文件缺失", icon: <IoWarningOutline aria-hidden="true" /> },
-    { id: "recent", label: "最近阅读", icon: <IoTimerOutline aria-hidden="true" /> },
+    { id: "recent", label: "近 30 天更新", icon: <IoTimerOutline aria-hidden="true" /> },
     { id: "duplicates", label: "疑似重复", icon: <IoDocumentsOutline aria-hidden="true" /> },
     { id: "unfiled", label: "未分类条目", icon: <IoAlbumsOutline aria-hidden="true" /> },
   ], []);
 
   const visibleItems = useMemo(() => filterLiteratureItems(items, activeCollectionId, appliedQuery), [activeCollectionId, appliedQuery, items]);
   const activeCollectionCount = useMemo(() => filterLiteratureItems(items, activeCollectionId, "").length, [activeCollectionId, items]);
+  const libraryBreakdown = useMemo(() => {
+    const libraryItems = filterLiteratureItems(items, "library", "");
+    const local = libraryItems.filter((item) => item.source === "local" || item.source === "merged").length;
+    const zotero = libraryItems.filter((item) => item.source === "zotero" || item.source === "merged").length;
+    const merged = libraryItems.filter((item) => item.source === "merged").length;
+    return { local, zotero, merged };
+  }, [items]);
   const selectedItem = visibleItems.find((item) => item.id === selectedItemId) ?? visibleItems[0] ?? null;
+  const selectedLocalFiles = selectedItem?.localFiles?.length
+    ? selectedItem.localFiles
+    : selectedItem?.relativePath
+      ? [{ relativePath: selectedItem.relativePath, fileName: selectedItem.fileName ?? selectedItem.relativePath, sourceAvailability: selectedItem.sourceAvailability === "missing" ? "missing" as const : "present" as const }]
+      : [];
+  const duplicateItems = useMemo(() => activeCollectionId === "duplicates" ? visibleItems.filter((item) => item.status === "conflict" && item.duplicateCandidates.length > 0) : [], [activeCollectionId, visibleItems]);
+  const selectedDuplicateItems = duplicateItems.filter((item) => selectedDuplicateIds.has(item.id));
+  const allDuplicatesSelected = duplicateItems.length > 0 && selectedDuplicateItems.length === duplicateItems.length;
+  const duplicateTargetsReady = selectedDuplicateItems.every((item) => Boolean(duplicateTargetKeys[item.id] || (item.duplicateCandidates.length === 1 && item.duplicateCandidates[0]?.itemKey)));
 
   useEffect(() => {
     if (selectedItem && selectedItem.id !== selectedItemId) setSelectedItemId(selectedItem.id);
   }, [selectedItem, selectedItemId]);
+
+  useEffect(() => {
+    const validIds = new Set(duplicateItems.map((item) => item.id));
+    setSelectedDuplicateIds((current) => {
+      if (activeCollectionId !== "duplicates") return current.size ? new Set() : current;
+      const next = new Set([...current].filter((id) => validIds.has(id)));
+      return next.size === current.size ? current : next;
+    });
+    setDuplicateTargetKeys((current) => {
+      const entries = Object.entries(current).filter(([id]) => validIds.has(id));
+      return entries.length === Object.keys(current).length ? current : Object.fromEntries(entries);
+    });
+  }, [activeCollectionId, duplicateItems]);
 
   const performAction = async (id: string, action: () => Promise<void>, successMessage?: string) => {
     setBusyId(id);
@@ -371,6 +411,52 @@ export function LiteraturePageV2({ startupRuntime = null, startupItems = null, s
   const ignoreItem = (item: LiteratureUnifiedItem) => performAction(item.id, async () => {
     await readApi(`/api/literature/items/${encodeURIComponent(item.id)}/ignore`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
   }, "已暂不处理；可在“暂不处理”分类中恢复。");
+
+  const toggleDuplicateSelection = (id: string) => setSelectedDuplicateIds((current) => {
+    const next = new Set(current);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    return next;
+  });
+
+  const selectAllDuplicateCandidates = () => setSelectedDuplicateIds(allDuplicatesSelected ? new Set() : new Set(duplicateItems.map((item) => item.id)));
+
+  const mergeSelectedDuplicates = async () => {
+    if (!selectedDuplicateItems.length || !duplicateTargetsReady) {
+      setError("请为每条已选择的候选指定唯一的 Zotero 合并目标。");
+      return;
+    }
+    const mergeItems = selectedDuplicateItems.map((item) => ({ id: item.id, itemKey: duplicateTargetKeys[item.id] || item.duplicateCandidates[0]!.itemKey }));
+    setBusyId("duplicate-batch");
+    try {
+      const result = await readApi<{ message?: string }>("/api/literature/duplicates/merge", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items: mergeItems }) });
+      setSelectedDuplicateIds(new Set());
+      setDuplicateTargetKeys({});
+      setNotice(result.message ?? `已合并 ${mergeItems.length} 条疑似重复记录。`);
+      await refresh();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "批量合并失败。");
+    } finally {
+      setBusyId("");
+    }
+  };
+
+  const ignoreSelectedDuplicates = async () => {
+    const ids = selectedDuplicateItems.map((item) => item.id);
+    if (!ids.length) return;
+    setBusyId("duplicate-batch");
+    try {
+      const result = await readApi<{ message?: string }>("/api/literature/duplicates/ignore", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids }) });
+      setSelectedDuplicateIds(new Set());
+      setDuplicateTargetKeys({});
+      setNotice(result.message ?? `已忽略 ${ids.length} 条疑似重复记录；可在“暂不处理”中恢复。`);
+      await refresh();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "批量忽略失败。");
+    } finally {
+      setBusyId("");
+    }
+  };
 
   const restoreItem = (item: LiteratureUnifiedItem) => performAction(item.id, async () => {
     await readApi(`/api/literature/items/${encodeURIComponent(item.id)}/restore`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
@@ -530,7 +616,7 @@ export function LiteraturePageV2({ startupRuntime = null, startupItems = null, s
       <div className="literature-source-status" role="status">
         <i className={runtime.zotero.connected ? "is-ready" : "is-warning"} />
         <b>Zotero</b>
-        <span>{runtime.zotero.connected ? runtime.zotero.authorized ? "已连接，可写入" : "已连接，待授权" : "未连接"}</span>
+        <span>{runtime.zotero.connected ? runtime.zotero.authorized ? "已连接，可写入" : runtime.zotero.writeSupported ? "已连接，待授权" : "已连接，仅可读取" : "未连接"}</span>
         <button type="button" className="literature-header-action" aria-label="文献数据库设置" title="文献数据库设置" onClick={openSettings}><IoSettingsOutline aria-hidden="true" />设置</button>
       </div>
     </header>
@@ -547,20 +633,29 @@ export function LiteraturePageV2({ startupRuntime = null, startupItems = null, s
         <div className="literature-sidebar-footer"><span>目录</span><small>{runtime.settings.inboxDisplayName ?? "未连接"}</small><span>模型</span><small className={runtime.model.status === "ready" ? "is-ready-text" : ""}>{runtime.model.selected.family} · {runtime.model.selected.profile.toUpperCase()} · {runtime.model.status === "ready" ? "在线" : "离线"}</small></div>
       </aside>
 
-      <section className="literature-list-panel" aria-label="文献列表">
+      <section className={`literature-list-panel${activeCollectionId === "duplicates" ? " is-duplicate-list" : ""}`} aria-label="文献列表">
         <header className="literature-list-toolbar">
-          <div className="literature-toolbar-actions"><button type="button" className="literature-toolbar-button" onClick={() => void rescan()} disabled={Boolean(busyId)}><IoRefreshOutline aria-hidden="true" /><span>{busyId === "scan" ? "扫描中" : "扫描"}</span></button><button type="button" className="literature-toolbar-button" onClick={() => void openOrganizationPreview()} disabled={Boolean(busyId)}><IoFolderOpenOutline aria-hidden="true" /><span>{busyId === "organize-preview" ? "生成中" : "自动整理"}</span></button><button type="button" className="literature-toolbar-button literature-toolbar-button--analysis" onClick={() => selectedItem && void startAnalysis(selectedItem)} disabled={Boolean(busyId) || !selectedItem} title="深读当前高亮文献"><IoSparklesOutline aria-hidden="true" /><span>{busyId === "analysis-queue" ? "加入中" : "后台分析"}</span></button><span className="literature-result-count">{visibleItems.length} / {activeCollectionCount} 个条目</span></div>
+          <div className="literature-toolbar-actions"><button type="button" className="literature-toolbar-button" onClick={() => void rescan()} disabled={Boolean(busyId)}><IoRefreshOutline aria-hidden="true" /><span>{busyId === "scan" ? "扫描中" : "扫描"}</span></button><button type="button" className="literature-toolbar-button" onClick={() => void openOrganizationPreview()} disabled={Boolean(busyId)}><IoFolderOpenOutline aria-hidden="true" /><span>{busyId === "organize-preview" ? "生成中" : "自动整理"}</span></button><button type="button" className="literature-toolbar-button literature-toolbar-button--analysis" onClick={() => selectedItem && void startAnalysis(selectedItem)} disabled={Boolean(busyId) || !selectedItem} title="深读当前高亮文献"><IoSparklesOutline aria-hidden="true" /><span>{busyId === "analysis-queue" ? "加入中" : "后台分析"}</span></button><span className="literature-result-count" title="总数按本地文献记录与 Zotero 条目合并计算；已关联条目只计一次。">{visibleItems.length} / {activeCollectionCount} 个条目{activeCollectionId === "library" && <small>本地记录 {libraryBreakdown.local} · Zotero {libraryBreakdown.zotero} · 已关联 {libraryBreakdown.merged}</small>}</span>
+            {activeCollectionId === "duplicates" && <div className="literature-duplicate-bulk" role="group" aria-label="疑似重复批量操作"><label><input type="checkbox" aria-label="全选或取消全选疑似重复" checked={allDuplicatesSelected} disabled={!duplicateItems.length || Boolean(busyId)} onChange={selectAllDuplicateCandidates} />全选 / 取消全选 <small>{selectedDuplicateItems.length}/{duplicateItems.length}</small></label><button type="button" className="literature-toolbar-button" disabled={!selectedDuplicateItems.length || !duplicateTargetsReady || Boolean(busyId)} onClick={() => void mergeSelectedDuplicates()}>{busyId === "duplicate-batch" ? "处理中…" : "批量合并"}</button><button type="button" className="literature-toolbar-button" disabled={!selectedDuplicateItems.length || Boolean(busyId)} onClick={() => void ignoreSelectedDuplicates()}>批量忽略</button></div>}
+          </div>
           <form className="literature-search" role="search" onSubmit={submitSearch}><IoSearchOutline aria-hidden="true" /><input aria-label="搜索文献" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索标题、作者或 DOI" /><button type="submit" aria-label="执行搜索" title="执行搜索"><IoSearchOutline aria-hidden="true" /></button></form>
         </header>
-        <div className="literature-list-columns" role="row" aria-hidden="true"><span>标题</span><span>创建者</span><span>年份</span><span><IoAttachOutline /></span></div>
-        <div className="literature-item-list" role="listbox" aria-label="可选文献条目">
-          {visibleItems.map((item) => <button type="button" role="option" aria-selected={selectedItem?.id === item.id} className={`literature-item-row${selectedItem?.id === item.id ? " is-selected" : ""}`} key={item.id} onClick={() => setSelectedItemId(item.id)}>
+        {activeCollectionId !== "duplicates" && <div className="literature-list-columns" role="row" aria-hidden="true"><span>标题</span><span>创建者</span><span>年份</span><span><IoAttachOutline /></span></div>}
+        <div className="literature-item-list" role={activeCollectionId === "duplicates" ? "list" : "listbox"} aria-label={activeCollectionId === "duplicates" ? "疑似重复候选" : "可选文献条目"}>
+          {activeCollectionId === "duplicates" ? duplicateItems.map((item) => <div className="literature-duplicate-candidate-row" role="listitem" key={item.id}>
+            <label className="literature-duplicate-select"><input type="checkbox" aria-label={`选择疑似重复：${item.title}`} checked={selectedDuplicateIds.has(item.id)} disabled={Boolean(busyId)} onChange={() => toggleDuplicateSelection(item.id)} /></label>
+            <button type="button" aria-pressed={selectedItem?.id === item.id} className={`literature-item-row${selectedItem?.id === item.id ? " is-selected" : ""}`} onClick={() => setSelectedItemId(item.id)}>
+              <span className="literature-item-title" title={`${item.title}（双击在 ObsUI 内置阅读器打开 PDF）`} onDoubleClick={(event) => { event.stopPropagation(); if (!busyId) openDocument(item); }}><IoChevronForwardOutline aria-hidden="true" /><span><b>{item.title}</b>{item.translatedTitleZh && <small title={item.translatedTitleZh}>{item.translatedTitleZh}</small>}<em>{item.journal ?? item.folderName ?? "期刊待识别"} <StatusChip item={item} /></em></span></span>
+              <span className="literature-item-author">{formatLiteratureAuthors(item.authors)}</span><span className="literature-item-year">{item.year ?? "—"}</span><span className="literature-item-attachment">{item.attachmentCount > 0 && <IoAttachOutline aria-label={`${item.attachmentCount} 个附件`} />}</span>
+            </button>
+            <label className="literature-duplicate-target"><span>合并目标</span><select aria-label={`合并目标：${item.title}`} value={duplicateTargetKeys[item.id] ?? (item.duplicateCandidates.length === 1 ? item.duplicateCandidates[0]!.itemKey : "")} disabled={Boolean(busyId)} onChange={(event) => setDuplicateTargetKeys((current) => ({ ...current, [item.id]: event.target.value }))}><option value="">请选择 Zotero 条目</option>{item.duplicateCandidates.map((candidate) => <option key={candidate.itemKey} value={candidate.itemKey}>{candidate.title} · {candidate.reason === "doi" ? "DOI" : candidate.reason === "hash" ? "SHA-256" : "标题/年份/作者"}</option>)}</select></label>
+          </div>) : visibleItems.map((item) => <button type="button" role="option" aria-selected={selectedItem?.id === item.id} className={`literature-item-row${selectedItem?.id === item.id ? " is-selected" : ""}`} key={item.id} onClick={() => setSelectedItemId(item.id)}>
             <span className="literature-item-title" title={`${item.title}（双击在 ObsUI 内置阅读器打开 PDF）`} onDoubleClick={(event) => { event.stopPropagation(); if (!busyId) openDocument(item); }}><IoChevronForwardOutline aria-hidden="true" /><span><b>{item.title}</b>{item.translatedTitleZh && <small title={item.translatedTitleZh}>{item.translatedTitleZh}</small>}<em>{item.journal ?? item.folderName ?? "期刊待识别"} <StatusChip item={item} /></em></span></span>
             <span className="literature-item-author">{formatLiteratureAuthors(item.authors)}</span>
             <span className="literature-item-year">{item.year ?? "—"}</span>
             <span className="literature-item-attachment">{item.attachmentCount > 0 && <IoAttachOutline aria-label={`${item.attachmentCount} 个附件`} />}</span>
           </button>)}
-          {!visibleItems.length && <div className="literature-empty-list"><IoFilterOutline aria-hidden="true" /><b>{runtime.settings.inboxConfigured ? "暂时没有匹配的文献" : "还没有连接文献目录"}</b><span>{runtime.settings.inboxConfigured ? "扫描后新增 PDF 会显示在这里。" : "请使用右上角的设置按钮连接期刊分类文件夹。"}</span></div>}
+          {!visibleItems.length && <div className="literature-empty-list"><IoFilterOutline aria-hidden="true" />{activeCollectionId === "zotero" ? <><b>{runtime.zotero.connected ? "Zotero 暂无关联文献" : "Zotero 尚未连接"}</b><span>{runtime.zotero.connected ? "与 Zotero 关联的条目会显示在这里。" : "启动 Zotero 桌面端并启用本地 API 后，条目会显示在这里。"}</span></> : <><b>{runtime.settings.inboxConfigured ? "暂时没有匹配的文献" : "还没有连接文献目录"}</b><span>{runtime.settings.inboxConfigured ? "扫描后新增 PDF 会显示在这里。" : "请使用右上角的设置按钮连接期刊分类文件夹。"}</span></>}</div>}
         </div>
       </section>
 
@@ -572,7 +667,7 @@ export function LiteraturePageV2({ startupRuntime = null, startupItems = null, s
           {selectedItem.translatedTitleZh && <p className="literature-detail-translation">{selectedItem.translatedTitleZh}</p>}
           <p className="literature-detail-authors">{formatLiteratureAuthors(selectedItem.authors)}</p></div>
           <dl className="literature-metadata"><div><dt>年份</dt><dd>{selectedItem.year ?? "待识别"}</dd></div><div><dt>期刊</dt><dd>{selectedItem.journal ?? "待识别"}</dd></div><div><dt>来源</dt><dd>{selectedItem.folderName ?? "Zotero"}</dd></div><div><dt>附件</dt><dd>{selectedItem.attachmentCount ? `${selectedItem.attachmentCount} 个附件` : "待上传"}</dd></div></dl>
-          {selectedItem.relativePath && <DetailSection title="本地文件"><div className="literature-source-path"><IoFolderOpenOutline aria-hidden="true" /><span>{selectedItem.folderName && `${selectedItem.folderName} / `}{selectedItem.relativePath}</span><button type="button" onClick={() => void openFolder(selectedItem)}>打开位置</button></div></DetailSection>}
+          {selectedLocalFiles.length > 0 && <DetailSection title={`本地文件（${selectedLocalFiles.length} 个来源）`}><div className="literature-local-sources">{selectedLocalFiles.map((file) => <div className="literature-source-path" key={file.relativePath}><IoFolderOpenOutline aria-hidden="true" /><span title={file.relativePath}>{file.relativePath}{file.sourceAvailability === "missing" ? " · 文件缺失" : ""}</span><button type="button" disabled={file.sourceAvailability === "missing"} onClick={() => void openFolder(selectedItem)}>打开位置</button></div>)}</div></DetailSection>}
           {selectedItem.error && <div className="literature-detail-error"><IoWarningOutline aria-hidden="true" /><span>{selectedItem.error}</span></div>}
           <DetailSection title="摘要"><p>{selectedItem.summaryZh ?? selectedItem.abstract ?? "尚未生成摘要；可点击分析，或在入库前手工填写。"}</p></DetailSection>
           <DetailSection title="ObsUI 扩展字段"><dl className="literature-extension-fields"><div><dt>中文译名</dt><dd>{selectedItem.translatedTitleZh ?? "待补充"}</dd></div><div><dt>分析来源</dt><dd>{selectedItem.analysisSource === "vision" ? "扫描页视觉识别" : selectedItem.analysisSource === "text" ? "正文提取" : selectedItem.analysisSource === "manual" ? "手工填写" : "待分析"}</dd></div><div><dt>置信度</dt><dd>{selectedItem.confidence === null ? "待评估" : `${Math.round(selectedItem.confidence * 100)}%`}</dd></div><div><dt>建议标签</dt><dd>{selectedItem.suggestedTags.length ? selectedItem.suggestedTags.join("、") : "待生成"}</dd></div></dl></DetailSection>
@@ -632,13 +727,32 @@ export function LiteraturePageV2({ startupRuntime = null, startupItems = null, s
             <div className="literature-dialog-warning" role="note">使用 ChatGPT / Codex 时，每页提取的全文文字会发送到云端模型；扫描页图像仅在本机 OCR，不上传。每次启动分析前还会再次询问确认。</div>
           </>}
           {providerCatalogError && <div className="literature-dialog-warning" role="status">{providerCatalogError}</div>}
-          <div className="literature-settings-status"><span className={runtime.model.status === "ready" ? "is-ready-text" : ""}>模型：{runtime.model.status === "ready" ? "在线" : runtime.model.error ?? "离线"}</span><span className={runtime.zotero.connected ? "is-ready-text" : ""}>Zotero：{runtime.zotero.connected ? runtime.zotero.authorized ? "已授权写入" : "已连接，需授权" : "未连接"}</span><span className={runtime.settings.obsidianVaultConfigured ? "is-ready-text" : ""}>Obsidian：{runtime.settings.obsidianVaultConfigured ? "已连接" : "未配置"}</span></div>
-          <div className="literature-dialog-actions"><button type="button" onClick={() => void rescan()}>立即扫描</button>{runtime.zotero.connected && !runtime.zotero.authorized && <button type="button" onClick={() => void authorize()} disabled={busyId === "zotero"}>授权 Zotero</button>}<button type="submit" disabled={busyId === "settings" || providerCatalogLoading || (deepAnalysisProvider === "codex" && (!codexAvailable || !codexModels.length || !codexReasoningOptions.length))}>{busyId === "settings" ? "保存中…" : "保存设置"}</button></div>
+          <div className="literature-settings-status"><span className={runtime.model.status === "ready" ? "is-ready-text" : ""}>模型：{runtime.model.status === "ready" ? "在线" : runtime.model.error ?? "离线"}</span><span className={runtime.zotero.connected ? "is-ready-text" : ""}>Zotero：{runtime.zotero.connected ? runtime.zotero.authorized ? "已授权写入" : runtime.zotero.writeSupported ? "已连接，需授权" : "已连接，只读（Zotero 10+ 支持写入）" : "未连接"}</span><span className={runtime.settings.obsidianVaultConfigured ? "is-ready-text" : ""}>Obsidian：{runtime.settings.obsidianVaultConfigured ? "已连接" : "未配置"}</span></div>
+          <div className="literature-dialog-actions"><button type="button" onClick={() => void rescan()}>立即扫描</button>{runtime.zotero.connected && runtime.zotero.writeSupported && !runtime.zotero.authorized && <button type="button" onClick={() => void authorize()} disabled={busyId === "zotero"}>授权 Zotero</button>}<button type="submit" disabled={busyId === "settings" || providerCatalogLoading || (deepAnalysisProvider === "codex" && (!codexAvailable || !codexModels.length || !codexReasoningOptions.length))}>{busyId === "settings" ? "保存中…" : "保存设置"}</button></div>
         </form>
       </section>
     </div>, document.body)}
-    {dialog === "import" && selectedItem && <div className="literature-dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setDialog(null); }}><section className="literature-dialog literature-item-dialog" role="dialog" aria-modal="true" aria-labelledby="literature-import-dialog-title"><header><div><span className="literature-kicker">CONFIRM IMPORT</span><h2 id="literature-import-dialog-title">确认写入 Zotero</h2></div><button type="button" className="literature-icon-button" aria-label="关闭导入确认" onClick={() => setDialog(null)}><IoCloseOutline aria-hidden="true" /></button></header><form onSubmit={submitImport}><label><span>标题</span><input autoFocus required value={importDraft.title} onChange={(event) => setImportDraft((current) => ({ ...current, title: event.target.value }))} /></label><div className="literature-form-grid"><label><span>作者</span><input value={importDraft.authors} onChange={(event) => setImportDraft((current) => ({ ...current, authors: event.target.value }))} /></label><label><span>年份</span><input inputMode="numeric" value={importDraft.year} onChange={(event) => setImportDraft((current) => ({ ...current, year: event.target.value.replace(/[^0-9]/g, "") }))} /></label></div><label><span>期刊</span><input value={importDraft.journal} onChange={(event) => setImportDraft((current) => ({ ...current, journal: event.target.value }))} /></label><label><span>DOI</span><input value={importDraft.doi} onChange={(event) => setImportDraft((current) => ({ ...current, doi: event.target.value }))} /></label><label><span>中文标题</span><input value={importDraft.translatedTitleZh} onChange={(event) => setImportDraft((current) => ({ ...current, translatedTitleZh: event.target.value }))} /></label><label><span>中文摘要</span><textarea rows={4} value={importDraft.summaryZh} onChange={(event) => setImportDraft((current) => ({ ...current, summaryZh: event.target.value }))} /></label><label><span>建议标签</span><input value={importDraft.suggestedTags} onChange={(event) => setImportDraft((current) => ({ ...current, suggestedTags: event.target.value }))} placeholder="用逗号分隔" /></label>{selectedItem.duplicateCandidates.length > 0 && <label><span>重复处理</span><select required value={targetItemKey} onChange={(event) => setTargetItemKey(event.target.value)}><option value="">请选择已有条目或新建</option>{selectedItem.duplicateCandidates.map((candidate) => <option key={candidate.itemKey} value={candidate.itemKey}>匹配：{candidate.title}</option>)}<option value="new">确认新建条目</option></select></label>}<p>确认后将创建或匹配 Zotero 条目、上传 PDF 受管副本，并回读验证附件；原始文件保持不变。</p><div className="literature-dialog-actions"><button type="button" onClick={() => setDialog(null)}>取消</button><button type="submit" disabled={busyId === selectedItem.id}>{busyId === selectedItem.id ? "导入中…" : "确认入库"}</button></div></form></section></div>}
-    {readerItem && typeof document !== "undefined" ? createPortal(<div className="literature-reader-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setReaderItem(null); }}><LiteratureReader item={readerItem} runtime={runtime} settings={settings} onClose={() => setReaderItem(null)} onOpenLocation={() => void openFolder(readerItem)} /></div>, document.body) : null}
+    {dialog === "import" && selectedItem && typeof document !== "undefined" ? createPortal(
+      <div className="literature-dialog-backdrop literature-import-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setDialog(null); }}>
+        <section className="literature-dialog literature-item-dialog" role="dialog" aria-modal="true" aria-labelledby="literature-import-dialog-title">
+          <header><div><span className="literature-kicker">CONFIRM IMPORT</span><h2 id="literature-import-dialog-title">确认写入 Zotero</h2></div><button type="button" className="literature-icon-button" aria-label="关闭导入确认" onClick={() => setDialog(null)}><IoCloseOutline aria-hidden="true" /></button></header>
+          <form onSubmit={submitImport}>
+            <label><span>标题</span><input autoFocus required value={importDraft.title} onChange={(event) => setImportDraft((current) => ({ ...current, title: event.target.value }))} /></label>
+            <div className="literature-form-grid"><label><span>作者</span><input value={importDraft.authors} onChange={(event) => setImportDraft((current) => ({ ...current, authors: event.target.value }))} /></label><label><span>年份</span><input inputMode="numeric" value={importDraft.year} onChange={(event) => setImportDraft((current) => ({ ...current, year: event.target.value.replace(/[^0-9]/g, "") }))} /></label></div>
+            <label><span>期刊</span><input value={importDraft.journal} onChange={(event) => setImportDraft((current) => ({ ...current, journal: event.target.value }))} /></label>
+            <label><span>DOI</span><input value={importDraft.doi} onChange={(event) => setImportDraft((current) => ({ ...current, doi: event.target.value }))} /></label>
+            <label><span>中文标题</span><input value={importDraft.translatedTitleZh} onChange={(event) => setImportDraft((current) => ({ ...current, translatedTitleZh: event.target.value }))} /></label>
+            <label><span>中文摘要</span><textarea rows={4} value={importDraft.summaryZh} onChange={(event) => setImportDraft((current) => ({ ...current, summaryZh: event.target.value }))} /></label>
+            <label><span>建议标签</span><input value={importDraft.suggestedTags} onChange={(event) => setImportDraft((current) => ({ ...current, suggestedTags: event.target.value }))} placeholder="用逗号分隔" /></label>
+            {selectedItem.duplicateCandidates.length > 0 && <label><span>重复处理</span><select required value={targetItemKey} onChange={(event) => setTargetItemKey(event.target.value)}><option value="">请选择已有条目或新建</option>{selectedItem.duplicateCandidates.map((candidate) => <option key={candidate.itemKey} value={candidate.itemKey}>匹配：{candidate.title}</option>)}<option value="new">确认新建条目</option></select></label>}
+            <p>确认后将创建或匹配 Zotero 条目、上传 PDF 受管副本，并回读验证附件；原始文件保持不变。</p>
+            <div className="literature-dialog-actions"><button type="button" onClick={() => setDialog(null)}>取消</button><button type="submit" disabled={busyId === selectedItem.id}>{busyId === selectedItem.id ? "导入中…" : "确认入库"}</button></div>
+          </form>
+        </section>
+      </div>,
+      document.body,
+    ) : null}
+    {readerItem && typeof document !== "undefined" ? createPortal(<div className="literature-reader-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setReaderItem(null); }}><Suspense fallback={<div role="status" aria-live="polite">正在打开 PDF 阅读器…</div>}><LiteratureReader item={readerItem} runtime={runtime} settings={settings} onClose={() => setReaderItem(null)} onOpenLocation={() => void openFolder(readerItem)} /></Suspense></div>, document.body) : null}
   </section>;
 }
 

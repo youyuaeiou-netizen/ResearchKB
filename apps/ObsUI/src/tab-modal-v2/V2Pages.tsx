@@ -4,7 +4,8 @@ import { useHddChat } from "../HddChatPanel";
 import flClashIconUrl from "../../assets/proxy/flclash.png";
 import clashVergeIconUrl from "../../assets/proxy/clash-verge.png";
 import { codexUsageWindowLabel, sortCodexUsageWindows } from "../codex-usage";
-import type { DeviceProfile } from "../device-profile";
+import type { DeviceProfile, DeviceStorage } from "../device-profile";
+import { DEFAULT_LOCAL_MODEL } from "../literature";
 import { DEFAULT_LOCAL_MODEL_SETTINGS, LOCAL_MODEL_CONTEXT_LENGTHS, LOCAL_MODEL_OUTPUT_LENGTHS, LOCAL_MODEL_THINKING_LEVELS, groupLocalModels, localModelThinkingFor, normalizeLocalModelSettings, parseLocalModelState, withLocalModelThinking, type LocalModelContextLength, type LocalModelOutputLength, type LocalModelSettings, type LocalModelThinking } from "../local-models";
 import type { ProjectKind, ResourceKind } from "../types";
 import { defaultSystemSensorSelection, normalizeSystemSensorSelection, SYSTEM_SENSOR_RECOMMENDATION_STORAGE_KEY, SYSTEM_SENSOR_SELECTION_STORAGE_KEY, SYSTEM_SENSOR_SUMMARY_DEFAULTS_VERSION, SYSTEM_SENSOR_SUMMARY_LIMIT, SYSTEM_SENSOR_TEMPERATURE_DEFAULTS_VERSION, SYSTEM_SENSOR_TEMPERATURE_LIMIT, type SystemMetrics, type SystemSensor, type SystemSensorCategory, type SystemSensorSelection } from "../system-metrics";
@@ -54,7 +55,11 @@ const legacySystemSensorSelectionStorageKeys = [
 ];
 
 const expectedSummarySensors: Omit<SensorCardSensor, "value">[] = [
-  { id: "unavailable:cpu-voltage", label: "CPU 核心电压", category: "cpu", kind: "voltage", unit: "V", source: "windows", sourceLabel: "需要 HWiNFO", role: "cpu-voltage", available: false },
+  { id: "unavailable:cpu-voltage", label: "CPU 核心电压", category: "cpu", kind: "voltage", unit: "V", source: "windows", sourceLabel: "未检测到实测核心电压；VID 是请求值", role: "cpu-voltage", available: false },
+  { id: "unavailable:cpu-load", label: "CPU 占用", category: "cpu", kind: "load", unit: "%", source: "windows", sourceLabel: "当前未检测到", role: "cpu-load", available: false },
+  { id: "unavailable:gpu-load", label: "GPU 占用", category: "gpu", kind: "load", unit: "%", source: "windows", sourceLabel: "当前未检测到", role: "gpu-load", available: false },
+  { id: "unavailable:gpu-memory-load", label: "GPU 显存占用", category: "gpu", kind: "load", unit: "%", source: "windows", sourceLabel: "需要 NVIDIA SMI 或 HWiNFO", role: "gpu-memory-load", available: false },
+  { id: "unavailable:memory-load", label: "内存占用", category: "memory", kind: "load", unit: "%", source: "windows", sourceLabel: "当前未检测到", role: "memory-load", available: false },
 ];
 
 const expectedTemperatureSensors: Omit<SensorCardSensor, "value">[] = [
@@ -75,25 +80,129 @@ function normalizeDiscoveredSensor(sensor: SystemSensor): SystemSensor {
   if (sensor.category === "system" && sensor.kind === "clock" && /^(?:内存频率|memory\s+(?:clock|frequency))$/i.test(sensor.label.trim())) {
     return { ...sensor, category: "memory", role: sensor.role ?? "memory-clock" };
   }
+  if (sensor.category === "cpu" && sensor.kind === "temperature" && sensor.role === "cpu-temperature" && /(?:封装|package)/i.test(sensor.label)) {
+    return { ...sensor, role: "cpu-package-temperature" };
+  }
   return sensor;
 }
 
-function sensorCardCandidates(sensors: SystemSensor[]): SensorCardSensor[] {
+function storageDeviceId(device: DeviceStorage, index: number) {
+  const modelSlug = device.model.toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-|-$/g, "").slice(0, 72);
+  return device.deviceId || `storage-model:${modelSlug || index}`;
+}
+
+function sensorCardCandidates(sensors: SystemSensor[], storageDevices: DeviceStorage[] = []): SensorCardSensor[] {
   const resolved = sensors.map(normalizeDiscoveredSensor).filter((sensor) => !isHiddenStorageHealthSensor(sensor)).map((sensor) => ({ ...sensor, available: true }));
-  const discoveredRoles = new Set(resolved.map((sensor) => sensor.role));
+  const directCpuVid = resolved.find((sensor) => sensor.category === "cpu" && sensor.kind === "voltage" && sensor.source === "hwinfo" && /^(?:core\s*vids|cpu\s*core\s*vid)$/i.test(sensor.label.trim()));
+  const cpuVidReadings = resolved.filter((sensor) => sensor.category === "cpu" && sensor.kind === "voltage" && sensor.source === "hwinfo" && /^(?:[pe]-core\s*\d+\s*vid|core\s*#?\s*\d+\s*vid)$/i.test(sensor.label.trim()));
+  const cpuVidValue = directCpuVid?.value ?? (cpuVidReadings.length ? Math.max(...cpuVidReadings.map((sensor) => sensor.value)) : null);
+  const cpuVidSensor: SensorCardSensor[] = cpuVidValue === null || hasSensorRole(resolved, "cpu-voltage") ? [] : [{
+    id: "summary:cpu-vid",
+    label: "CPU 请求电压（VID）",
+    category: "cpu",
+    kind: "voltage",
+    unit: "V",
+    source: "hwinfo",
+    sourceLabel: directCpuVid ? "HWiNFO · Core VIDs" : "HWiNFO · 最高核心 VID",
+    role: "cpu-vid",
+    value: cpuVidValue,
+    available: true,
+  }];
+  const directCoreTemperature = resolved.find((sensor) => sensor.category === "cpu" && sensor.kind === "temperature" && sensor.source === "hwinfo" && /^(?:core\s*temperatures?|核心温度)$/i.test(sensor.label.trim()));
+  const coreTemperatureReadings = resolved.filter((sensor) => sensor.category === "cpu" && sensor.kind === "temperature" && sensor.source === "hwinfo" && /^(?:[pe]-core\s*\d+|core\s*#?\s*\d+|核心\s*#?\s*\d+)$/i.test(sensor.label.trim()));
+  const coreTemperatureValue = directCoreTemperature?.value ?? (coreTemperatureReadings.length ? Math.round(coreTemperatureReadings.reduce((sum, sensor) => sum + sensor.value, 0) / coreTemperatureReadings.length) : null);
+  const cpuCoreTemperature: SensorCardSensor[] = coreTemperatureValue === null ? [] : [{
+    id: "summary:cpu-core-temperature",
+    label: "CPU 核心温度",
+    category: "cpu",
+    kind: "temperature",
+    unit: "°C",
+    source: "hwinfo",
+    sourceLabel: directCoreTemperature ? "HWiNFO · 核心温度" : "HWiNFO · 各核心平均",
+    role: "cpu-temperature",
+    value: coreTemperatureValue,
+    available: true,
+  }];
+  const candidates = [...resolved, ...cpuVidSensor, ...cpuCoreTemperature];
+  const discoveredRoles = new Set(candidates.map((sensor) => sensor.role));
+  const storagePlaceholders = storageDevices.flatMap((device, index) => {
+    const deviceId = storageDeviceId(device, index);
+    const matchesDevice = (sensor: SensorCardSensor) => sensor.deviceId === deviceId || sensor.deviceName?.localeCompare(device.model, undefined, { sensitivity: "accent" }) === 0;
+    const placeholder = (role: "disk-load" | "storage-health" | "storage-temperature", label: string, kind: "load" | "temperature", unit: "%" | "°C"): SensorCardSensor | null =>
+      candidates.some((sensor) => sensor.role === role && matchesDevice(sensor)) ? null : {
+        id: `unavailable:${deviceId}:${role}`,
+        label,
+        category: "storage",
+        kind,
+        unit,
+        source: "windows",
+        sourceLabel: "当前未检测到",
+        role,
+        deviceId,
+        deviceName: device.model,
+        value: 0,
+        available: false,
+      };
+    return [
+      placeholder("storage-temperature", "硬盘温度", "temperature", "°C"),
+      placeholder("disk-load", "硬盘活动", "load", "%"),
+      placeholder("storage-health", "磁盘剩余寿命", "load", "%"),
+    ].filter((sensor): sensor is SensorCardSensor => sensor !== null);
+  });
+  const missingSummary = expectedSummarySensors.filter((sensor) => !(sensor.role === "cpu-voltage" && hasSensorRole(candidates, "cpu-vid")) && !discoveredRoles.has(sensor.role));
+  const genericStorageSummary = storageDevices.length ? [] : [
+    { id: "unavailable:disk-load", label: "硬盘活动", category: "storage" as const, kind: "load" as const, unit: "%" as const, source: "windows" as const, sourceLabel: "当前未检测到", role: "disk-load", available: false, value: 0 },
+    { id: "unavailable:storage-health", label: "磁盘剩余寿命", category: "storage" as const, kind: "load" as const, unit: "%" as const, source: "windows" as const, sourceLabel: "当前未检测到", role: "storage-health", available: false, value: 0 },
+  ];
+  const missingTemperatures = expectedTemperatureSensors
+    .filter((sensor) => sensor.role !== "storage-temperature" && !discoveredRoles.has(sensor.role));
+  if (!storageDevices.length && !discoveredRoles.has("storage-temperature")) {
+    missingTemperatures.push(expectedTemperatureSensors.find((sensor) => sensor.role === "storage-temperature")!);
+  }
   return [
-    ...resolved,
-    ...expectedSummarySensors.filter((sensor) => !discoveredRoles.has(sensor.role)).map((sensor) => ({ ...sensor, value: 0 })),
-    ...expectedTemperatureSensors.filter((sensor) => !discoveredRoles.has(sensor.role)).map((sensor) => ({ ...sensor, value: 0 })),
+    ...candidates,
+    ...missingSummary.map((sensor) => ({ ...sensor, value: 0 })),
+    ...genericStorageSummary,
+    ...storagePlaceholders,
+    ...missingTemperatures.map((sensor) => ({ ...sensor, value: 0 })),
   ];
 }
 
 function defaultCardSensorSelection(sensors: SensorCardSensor[]): SystemSensorSelection {
-  return { ...defaultSystemSensorSelection(sensors.filter((sensor) => sensor.available)), summaryDefaultsVersion: SYSTEM_SENSOR_SUMMARY_DEFAULTS_VERSION, temperatureDefaultsVersion: SYSTEM_SENSOR_TEMPERATURE_DEFAULTS_VERSION };
+  return { ...defaultSystemSensorSelection(sensors), summaryDefaultsVersion: SYSTEM_SENSOR_SUMMARY_DEFAULTS_VERSION, temperatureDefaultsVersion: SYSTEM_SENSOR_TEMPERATURE_DEFAULTS_VERSION };
+}
+
+function sensorSelectionRoleKey(sensor: SystemSensor) {
+  return sensor.category === "storage" && ["disk-load", "storage-health", "storage-temperature"].includes(sensor.role ?? "")
+    ? `${sensor.role}:${sensor.deviceId ?? sensor.id}`
+    : sensor.role ?? sensor.id;
+}
+
+function mergeSensorDefaults(selection: SystemSensorSelection, defaults: SystemSensorSelection, sensors: SensorCardSensor[], target: SensorSelectionTarget) {
+  const requiredSummaryRoles = new Set(["cpu-voltage", "cpu-vid", "cpu-load", "gpu-load", "gpu-memory-load", "memory-load"]);
+  const requiredTemperatureRoles = new Set(["cpu-temperature", "gpu-temperature", "memory-temperature", "motherboard-temperature", "storage-temperature"]);
+  const required = (sensor: SensorCardSensor | undefined) => {
+    if (!sensor) return false;
+    if (target === "summary") return requiredSummaryRoles.has(sensor.role ?? "") || sensor.category === "storage" && sensor.role === "storage-health";
+    return sensor.kind === "temperature" && requiredTemperatureRoles.has(sensor.role ?? "");
+  };
+  const byId = new Map(sensors.map((sensor) => [sensor.id, sensor]));
+  const requiredIds = defaults[target].filter((id) => required(byId.get(id)));
+  const requiredKeys = new Set(requiredIds.map((id) => sensorSelectionRoleKey(byId.get(id)!)));
+  const preserved = selection[target].filter((id) => {
+    const sensor = byId.get(id);
+    if (target === "summary" && sensor?.role === "cpu-voltage" && sensors.some((candidate) => candidate.available && candidate.role === "cpu-vid")) return false;
+    if (target === "summary" && (sensor?.role === "disk-load" || id.endsWith(":disk-load") || id === "windows:disk-load")) return false;
+    if (target === "temperatures" && sensor?.category === "cpu" && sensor.kind === "temperature" && sensor.role !== "cpu-temperature") return false;
+    return !sensor || !requiredKeys.has(sensorSelectionRoleKey(sensor));
+  });
+  const optionalDefaults = defaults[target].filter((id) => !required(byId.get(id)));
+  const limit = target === "summary" ? SYSTEM_SENSOR_SUMMARY_LIMIT : SYSTEM_SENSOR_TEMPERATURE_LIMIT;
+  return [...new Set([...requiredIds, ...preserved, ...optionalDefaults])].slice(0, limit);
 }
 
 const cpuDetailLabelPattern = /(?:core\s*#?\s*\d|核心\s*#?\s*\d|t\d+|thread\s*\d|vid|smu|ccd\s*\d)/i;
-const cpuSummaryRoles = new Set(["cpu-clock", "cpu-voltage", "cpu-power", "cpu-load", "cpu-temperature"]);
+const cpuSummaryRoles = new Set(["cpu-clock", "cpu-voltage", "cpu-vid", "cpu-power", "cpu-load", "cpu-temperature"]);
 const gpuSummaryRoles = new Set(["gpu-core-clock", "gpu-memory-clock", "gpu-power", "gpu-load", "gpu-memory-load", "gpu-temperature"]);
 const cpuBusClockPattern = /^(?:cpu\s*)?(?:总线频率|bus\s+speed|cpu\s+bus\s+speed)$/i;
 const cpuPeakLoadPattern = /^(?:最大cpu\/线程使用率|maximum\s+cpu\/thread\s+usage)$/i;
@@ -105,8 +214,10 @@ function hasSensorRole(sensors: SensorCardSensor[], role: string) {
 }
 
 function isCpuPickerSensor(sensor: SensorCardSensor, sensors: SensorCardSensor[]) {
-  if (!sensor.available || sensor.category !== "cpu" || cpuDetailLabelPattern.test(sensor.label)) return false;
+  if (sensor.category !== "cpu") return false;
+  if (!sensor.available) return sensor.role !== null && cpuSummaryRoles.has(sensor.role) && !(sensor.role === "cpu-voltage" && hasSensorRole(sensors, "cpu-vid"));
   if (sensor.role && cpuSummaryRoles.has(sensor.role)) return true;
+  if (cpuDetailLabelPattern.test(sensor.label)) return false;
   const label = sensor.label.trim();
   if (sensor.kind === "clock") {
     if (cpuBusClockPattern.test(label)) return false;
@@ -127,11 +238,12 @@ function isCpuPickerSensor(sensor: SensorCardSensor, sensors: SensorCardSensor[]
     if (hasSensorRole(sensors, "cpu-load")) return false;
     return /(?:cpu|total).*?(?:占用|使用率|load|usage)|(?:总|全部).*?(?:占用|使用率)/i.test(label);
   }
-  return sensor.kind === "temperature";
+  return sensor.kind === "temperature" && sensor.role === "cpu-temperature";
 }
 
 function isGpuPickerSensor(sensor: SensorCardSensor, sensors: SensorCardSensor[]) {
-  if (!sensor.available || sensor.category !== "gpu") return false;
+  if (sensor.category !== "gpu") return false;
+  if (!sensor.available) return sensor.role !== null && gpuSummaryRoles.has(sensor.role);
   if (sensor.role && gpuSummaryRoles.has(sensor.role)) return true;
   if (sensor.kind !== "voltage") return sensor.kind === "temperature";
   const label = sensor.label.trim();
@@ -143,11 +255,12 @@ function isGpuPickerSensor(sensor: SensorCardSensor, sensors: SensorCardSensor[]
 }
 
 function isMemoryPickerSensor(sensor: SensorCardSensor) {
-  return sensor.available && sensor.category === "memory" && sensor.role !== null && ["memory-clock", "memory-load", "memory-temperature"].includes(sensor.role);
+  return sensor.category === "memory" && sensor.role !== null && ["memory-clock", "memory-load", "memory-temperature"].includes(sensor.role);
 }
 
 function isMotherboardPickerSensor(sensor: SensorCardSensor, sensors: SensorCardSensor[]) {
-  if (!sensor.available || sensor.category !== "motherboard") return false;
+  if (sensor.category !== "motherboard") return false;
+  if (!sensor.available) return sensor.role === "motherboard-temperature";
   if (sensor.role === "motherboard-temperature") return true;
   if (sensor.kind !== "voltage") return false;
   const label = sensor.label.trim();
@@ -158,7 +271,7 @@ function isMotherboardPickerSensor(sensor: SensorCardSensor, sensors: SensorCard
 }
 
 function isStoragePickerSensor(sensor: SensorCardSensor) {
-  return sensor.available && sensor.category === "storage" && sensor.role !== null && ["disk-load", "storage-health", "storage-temperature"].includes(sensor.role);
+  return sensor.category === "storage" && sensor.role !== null && ["disk-load", "storage-health", "storage-temperature"].includes(sensor.role);
 }
 
 function isSummaryPickerSensor(sensor: SensorCardSensor, sensors: SensorCardSensor[]) {
@@ -173,6 +286,7 @@ function isSummaryPickerSensor(sensor: SensorCardSensor, sensors: SensorCardSens
 const sensorPickerRoleOrder: Record<string, number> = {
   "cpu-clock": 10,
   "cpu-voltage": 20,
+  "cpu-vid": 20,
   "cpu-load": 30,
   "cpu-power": 40,
   "gpu-core-clock": 10,
@@ -190,7 +304,7 @@ const sensorPickerRoleOrder: Record<string, number> = {
 const sensorPickerKindOrder: Record<SystemSensor["kind"], number> = { clock: 10, voltage: 20, load: 30, power: 40, temperature: 0 };
 
 function sortPickerSensors(sensors: SensorCardSensor[]) {
-  return [...sensors].sort((left, right) => (sensorPickerRoleOrder[left.role ?? ""] ?? sensorPickerKindOrder[left.kind]) - (sensorPickerRoleOrder[right.role ?? ""] ?? sensorPickerKindOrder[right.kind]) || left.label.localeCompare(right.label, "zh-CN"));
+  return [...sensors].sort((left, right) => (sensorPickerRoleOrder[left.role ?? ""] ?? sensorPickerKindOrder[left.kind]) - (sensorPickerRoleOrder[right.role ?? ""] ?? sensorPickerKindOrder[right.kind]) || (left.deviceName ?? "").localeCompare(right.deviceName ?? "", "zh-CN") || left.label.localeCompare(right.label, "zh-CN"));
 }
 
 function removeNonCanonicalSummarySelections(selection: SystemSensorSelection, sensors: SensorCardSensor[], knownSensors: Map<string, SensorCardSensor>): SystemSensorSelection {
@@ -204,37 +318,85 @@ function removeNonCanonicalSummarySelections(selection: SystemSensorSelection, s
 }
 
 function restoreDetectedTemperatureSensors(selection: SystemSensorSelection, sensors: SensorCardSensor[]): SystemSensorSelection {
-  const detectedByRole = new Map(sensors.filter((sensor) => sensor.available && sensor.kind === "temperature" && sensor.role).map((sensor) => [sensor.role!, sensor.id]));
+  const detectedByRole = new Map(sensors.filter((sensor) => sensor.available && sensor.kind === "temperature" && sensor.role).map((sensor) => [sensorSelectionRoleKey(sensor), sensor.id]));
   const temperatures = selection.temperatures.map((id) => {
-    const role = id.startsWith("unavailable:") ? id.slice("unavailable:".length) : null;
-    return role ? detectedByRole.get(role) ?? id : id;
+    const unavailable = sensors.find((sensor) => sensor.id === id);
+    const role = unavailable?.role ?? (id.startsWith("unavailable:") ? id.slice("unavailable:".length) : null);
+    if (!role) return id;
+    const key = unavailable?.deviceId ? `${role}:${unavailable.deviceId}` : role;
+    return detectedByRole.get(key) ?? id;
   });
   return temperatures.every((id, index) => id === selection.temperatures[index]) ? selection : { ...selection, temperatures };
 }
 
+function removeMissingGpuTemperature(selection: SystemSensorSelection, sensors: SensorCardSensor[], knownSensors: Map<string, SensorCardSensor>): SystemSensorSelection {
+  const liveGpuTemperature = sensors.find((sensor) => sensor.available && sensor.role === "gpu-temperature");
+  const temperatures = [...new Set(selection.temperatures.flatMap((id) => {
+    const historical = knownSensors.get(id);
+    if (historical?.role !== "gpu-temperature" || sensors.some((sensor) => sensor.id === id && sensor.available)) return [id];
+    return liveGpuTemperature ? [liveGpuTemperature.id] : [];
+  }))];
+  return temperatures.length === selection.temperatures.length && temperatures.every((id, index) => id === selection.temperatures[index]) ? selection : { ...selection, temperatures };
+}
+
+function keepOneCpuTemperature(selection: SystemSensorSelection, sensors: SensorCardSensor[], knownSensors: Map<string, SensorCardSensor>): SystemSensorSelection {
+  const canonical = sensors.find((sensor) => sensor.available && sensor.category === "cpu" && sensor.role === "cpu-temperature");
+  const byId = new Map([...knownSensors.entries(), ...sensors.map((sensor) => [sensor.id, sensor] as const)]);
+  let keptCpu = false;
+  const temperatures = selection.temperatures.flatMap((id) => {
+    const sensor = byId.get(id);
+    if (sensor?.category !== "cpu" || sensor.kind !== "temperature") return [id];
+    if (keptCpu) return [];
+    keptCpu = true;
+    return [canonical?.id ?? id];
+  });
+  return temperatures.length === selection.temperatures.length && temperatures.every((id, index) => id === selection.temperatures[index]) ? selection : { ...selection, temperatures };
+}
+
+function refreshSensorSelection(selection: SystemSensorSelection, sensors: SensorCardSensor[], knownSensors: Map<string, SensorCardSensor>): SystemSensorSelection {
+  let next = restoreDetectedTemperatureSensors(selection, sensors);
+  next = restoreDetectedSummarySensors(next, sensors);
+  next = replaceUnverifiedCpuBoardVoltage(next, sensors);
+  next = replaceLegacyCpuCoreVid(next, sensors);
+  next = replaceUnavailableCpuVoltageWithVid(next, sensors);
+  next = recoverHWiNFOSensorSelection(next, sensors);
+  next = removeNonCanonicalSummarySelections(next, sensors, knownSensors);
+  next = removeMissingGpuTemperature(next, sensors, knownSensors);
+  return keepOneCpuTemperature(next, sensors, knownSensors);
+}
+
 function restoreDetectedSummarySensors(selection: SystemSensorSelection, sensors: SensorCardSensor[]): SystemSensorSelection {
-  const detectedByRole = new Map(sensors.filter((sensor) => sensor.available && sensor.role).map((sensor) => [sensor.role!, sensor.id]));
+  const detectedByRole = new Map(sensors.filter((sensor) => sensor.available && sensor.role).map((sensor) => [sensorSelectionRoleKey(sensor), sensor.id]));
   const summary = selection.summary.map((id) => {
-    const role = id.startsWith("unavailable:") ? id.slice("unavailable:".length) : null;
-    return role ? detectedByRole.get(role) ?? id : id;
+    const unavailable = sensors.find((sensor) => sensor.id === id);
+    const role = unavailable?.role ?? (id.startsWith("unavailable:") ? id.slice("unavailable:".length) : null);
+    if (!role) return id;
+    const key = unavailable?.deviceId ? `${role}:${unavailable.deviceId}` : role;
+    return detectedByRole.get(key) ?? id;
   });
   return summary.every((id, index) => id === selection.summary[index]) ? selection : { ...selection, summary };
 }
 
 function replaceLegacyCpuCoreVid(selection: SystemSensorSelection, sensors: SensorCardSensor[]): SystemSensorSelection {
-  const vcore = sensors.find((sensor) => sensor.available && sensor.category === "cpu" && sensor.kind === "voltage" && sensor.role === "cpu-voltage");
-  if (!vcore) return selection;
+  const cpuVid = sensors.find((sensor) => sensor.available && sensor.category === "cpu" && sensor.kind === "voltage" && sensor.role === "cpu-vid");
+  if (!cpuVid) return selection;
   const summary = [...new Set(selection.summary.map((id) => {
     const selected = sensors.find((sensor) => sensor.id === id);
-    return selected?.category === "cpu" && selected.kind === "voltage" && /(?:单核\s*VID|Core\s*#.*\sVID)/i.test(selected.label) ? vcore.id : id;
+    return selected?.category === "cpu" && selected.kind === "voltage" && /(?:单核\s*VID|Core\s*#.*\sVID|[PE]-core\s*\d+\s*VID)/i.test(selected.label) ? cpuVid.id : id;
   }))];
   return summary.length === selection.summary.length && summary.every((id, index) => id === selection.summary[index]) ? selection : { ...selection, summary };
 }
 
+function replaceUnavailableCpuVoltageWithVid(selection: SystemSensorSelection, sensors: SensorCardSensor[]): SystemSensorSelection {
+  const cpuVid = sensors.find((sensor) => sensor.available && sensor.category === "cpu" && sensor.role === "cpu-vid");
+  if (!cpuVid || !selection.summary.includes("unavailable:cpu-voltage")) return selection;
+  return { ...selection, summary: [...new Set(selection.summary.map((id) => id === "unavailable:cpu-voltage" ? cpuVid.id : id))] };
+}
+
 function replaceUnverifiedCpuBoardVoltage(selection: SystemSensorSelection, sensors: SensorCardSensor[]): SystemSensorSelection {
   const trustedVoltage = sensors.find((sensor) => sensor.available && sensor.category === "cpu" && sensor.kind === "voltage" && sensor.role === "cpu-voltage");
-  const summary = selection.summary.map((id) => id === "hardware-monitor:web:/lpc/it8613e/0/voltage/0" ? trustedVoltage?.id ?? "unavailable:cpu-voltage" : id);
-  return summary.every((id, index) => id === selection.summary[index]) ? selection : { ...selection, summary };
+  const summary = [...new Set(selection.summary.map((id) => id === "hardware-monitor:web:/lpc/it8613e/0/voltage/0" ? trustedVoltage?.id ?? "unavailable:cpu-voltage" : id))];
+  return summary.length === selection.summary.length && summary.every((id, index) => id === selection.summary[index]) ? selection : { ...selection, summary };
 }
 
 function recoverHWiNFOSensorSelection(selection: SystemSensorSelection, sensors: SensorCardSensor[]): SystemSensorSelection {
@@ -242,13 +404,14 @@ function recoverHWiNFOSensorSelection(selection: SystemSensorSelection, sensors:
   if (!sensors.some((sensor) => sensor.available && sensor.source === "hwinfo")) return selection;
   const byRole = new Map<string, SensorCardSensor>();
   sensors.filter((sensor) => sensor.available && sensor.role).forEach((sensor) => {
-    const current = byRole.get(sensor.role!);
-    if (!current || (current.source !== "hwinfo" && sensor.source === "hwinfo")) byRole.set(sensor.role!, sensor);
+    const roleKey = sensorSelectionRoleKey(sensor);
+    const current = byRole.get(roleKey);
+    if (!current || (current.source !== "hwinfo" && sensor.source === "hwinfo")) byRole.set(roleKey, sensor);
   });
   const byId = new Map(sensors.map((sensor) => [sensor.id, sensor]));
   const summary = selection.summary.map((id) => {
     const selected = byId.get(id);
-    const preferred = selected?.role ? byRole.get(selected.role) : undefined;
+    const preferred = selected?.role ? byRole.get(sensorSelectionRoleKey(selected)) : undefined;
     return preferred && selected?.source !== "hwinfo" && preferred.source === "hwinfo" ? preferred.id : id;
   });
   const trustedVoltage = byRole.get("cpu-voltage");
@@ -263,7 +426,7 @@ function recoverHWiNFOSensorSelection(selection: SystemSensorSelection, sensors:
 function TemperatureRow({ sensor }: { sensor: SensorCardSensor }) {
   const tone = !sensor.available ? "unavailable" : sensor.value >= 80 ? "hot" : sensor.value >= 65 ? "warm" : "normal";
   return <div className={`tab-modal-v2__temperature-row tab-modal-v2__temperature-row--${tone}`}>
-    <span>{sensor.label}</span>
+    <span title={sensor.label}>{sensorDisplayLabel(sensor)}</span>
     <strong>{formatSensorValue(sensor)}</strong>
     <div className="tab-modal-v2__temperature-track"><div className="tab-modal-v2__temperature-meter"><i style={{ width: sensor.available ? `${Math.min(100, Math.max(0, sensor.value))}%` : "0%" }} /></div></div>
   </div>;
@@ -273,6 +436,40 @@ const sensorCategoryLabels: Record<SystemSensorCategory, string> = { cpu: "CPU",
 const sensorCategories: SystemSensorCategory[] = ["cpu", "gpu", "memory", "motherboard", "storage", "system"];
 const sensorKindLabels: Record<SystemSensor["kind"], string> = { clock: "频率", voltage: "电压", power: "功耗", load: "占用", temperature: "温度" };
 const sensorSemanticLabel = (sensor: SensorCardSensor) => sensor.role === "storage-health" ? "寿命" : sensorKindLabels[sensor.kind];
+function sensorDisplayLabel(sensor: SensorCardSensor) {
+  const byRole: Record<string, string> = {
+    "cpu-load": "CPU 占用",
+    "cpu-vid": "CPU 请求电压（VID）",
+    "cpu-package-temperature": "CPU 封装温度",
+    "gpu-temperature": "显卡温度",
+    "gpu-load": "显卡占用",
+    "gpu-memory-load": "显存占用",
+    "memory-temperature": "内存温度",
+    "motherboard-temperature": "主板温度",
+    "storage-temperature": "硬盘温度",
+    "storage-health": "硬盘剩余寿命",
+    "disk-load": "硬盘活动率",
+  };
+  const label = sensor.role === "cpu-temperature" && sensor.label === "CPU 封装"
+    ? "CPU 温度（封装）"
+    : sensor.role && byRole[sensor.role]
+      ? byRole[sensor.role]
+    : sensor.label
+      .replace(/^P-core (\d+)/, "性能核心 $1")
+      .replace(/^E-core (\d+)/, "能效核心 $1")
+      .replace(/^Ring\/LLC /, "缓存环总线 ")
+      .replace(/^SA VID$/, "系统代理请求电压")
+      .replace(/^iGPU VID$/, "核显请求电压")
+      .replace(/ VID$/, "请求电压")
+      .replace(/与 TjMAX 的差值/, "距温度上限")
+      .replace(/^GPU(?: \d+)? /, "显卡 ")
+      .replace(/^PCH /, "主板芯片组 ")
+      .replace(/^SPD Hub /, "内存模组 ")
+      .replace(/^IA 核心功率$/, "CPU 核心功率")
+      .replace(/^GT 核心功率$/, "核显功率")
+      .replace(/^System Agent 功率$/, "系统代理功率");
+  return sensor.deviceName ? `${sensor.deviceName} · ${label}` : label;
+}
 
 function formatSensorValue(sensor: SensorCardSensor) {
   if (!sensor.available) return "暂不可用";
@@ -324,7 +521,7 @@ function writeSystemSensorCatalog(sensors: Map<string, SensorCardSensor>) {
 
 function SensorReadout({ sensor }: { sensor: SensorCardSensor }) {
   return <div className={`tab-modal-v2__sensor-readout tab-modal-v2__sensor-readout--${sensor.available ? sensor.category : "unavailable"}`}>
-    <span>{sensor.label}</span><strong>{formatSensorValue(sensor)}</strong>
+    <span title={sensor.label}>{sensorDisplayLabel(sensor)}</span><strong>{formatSensorValue(sensor)}</strong>
   </div>;
 }
 
@@ -344,7 +541,7 @@ function UnavailableTemperatureRow({ label }: { label: string }) {
 
 function SystemSensorCard({ metrics }: { metrics: SystemMetrics | null }) {
   const rawSensors = metrics?.sensors;
-  const sensors = sensorCardCandidates(rawSensors ?? []);
+  const sensors = sensorCardCandidates(rawSensors ?? [], metrics?.device?.storage ?? []);
   const [selection, setSelection] = useState<SystemSensorSelection | null>(readSystemSensorSelection);
   const [recommendation, setRecommendation] = useState<SystemSensorSelection | null>(readSystemSensorRecommendation);
   const [recommendationNotice, setRecommendationNotice] = useState<string | null>(null);
@@ -357,7 +554,7 @@ function SystemSensorCard({ metrics }: { metrics: SystemMetrics | null }) {
   });
   const sensorById = new Map([...knownSensors.values()].map((sensor) => [sensor.id, { ...sensor, value: 0, available: false }]));
   sensors.forEach((sensor) => sensorById.set(sensor.id, sensor));
-  const activeSelection = selection ?? defaultCardSensorSelection(sensors);
+  const activeSelection = keepOneCpuTemperature(removeMissingGpuTemperature(selection ?? defaultCardSensorSelection(sensors), sensors, knownSensors), sensors, knownSensors);
   const activeSelectionForUi: SystemSensorSelection = {
     ...activeSelection,
     summary: activeSelection.summary.filter((id) => sensorById.has(id)),
@@ -378,18 +575,18 @@ function SystemSensorCard({ metrics }: { metrics: SystemMetrics | null }) {
 
   useEffect(() => {
     if (!rawSensors?.length) return;
-    const candidates = sensorCardCandidates(rawSensors);
+    const candidates = sensorCardCandidates(rawSensors, metrics?.device?.storage ?? []);
     const defaults = defaultCardSensorSelection(candidates);
     if (selection === null) {
       setSelection(defaults);
     } else if (selection.summaryDefaultsVersion !== SYSTEM_SENSOR_SUMMARY_DEFAULTS_VERSION || selection.temperatureDefaultsVersion !== SYSTEM_SENSOR_TEMPERATURE_DEFAULTS_VERSION) {
       setSelection({
         ...selection,
-        ...(selection.summaryDefaultsVersion !== SYSTEM_SENSOR_SUMMARY_DEFAULTS_VERSION ? { summary: defaults.summary, summaryDefaultsVersion: SYSTEM_SENSOR_SUMMARY_DEFAULTS_VERSION } : {}),
-        ...(selection.temperatureDefaultsVersion !== SYSTEM_SENSOR_TEMPERATURE_DEFAULTS_VERSION ? { temperatures: defaults.temperatures, temperatureDefaultsVersion: SYSTEM_SENSOR_TEMPERATURE_DEFAULTS_VERSION } : {}),
+        ...(selection.summaryDefaultsVersion !== SYSTEM_SENSOR_SUMMARY_DEFAULTS_VERSION ? { summary: mergeSensorDefaults(selection, defaults, candidates, "summary"), summaryDefaultsVersion: SYSTEM_SENSOR_SUMMARY_DEFAULTS_VERSION } : {}),
+        ...(selection.temperatureDefaultsVersion !== SYSTEM_SENSOR_TEMPERATURE_DEFAULTS_VERSION ? { temperatures: mergeSensorDefaults(selection, defaults, candidates, "temperatures"), temperatureDefaultsVersion: SYSTEM_SENSOR_TEMPERATURE_DEFAULTS_VERSION } : {}),
       });
     } else {
-      const nextSelection = removeNonCanonicalSummarySelections(recoverHWiNFOSensorSelection(replaceLegacyCpuCoreVid(replaceUnverifiedCpuBoardVoltage(restoreDetectedSummarySensors(restoreDetectedTemperatureSensors(selection, candidates), candidates), candidates), candidates), candidates), candidates, knownSensors);
+      const nextSelection = refreshSensorSelection(selection, candidates, knownSensors);
       if (nextSelection !== selection) {
         setSelection(nextSelection);
         return;
@@ -397,11 +594,11 @@ function SystemSensorCard({ metrics }: { metrics: SystemMetrics | null }) {
       if (recommendation === null) {
         setRecommendation(nextSelection);
       } else {
-        const nextRecommendation = removeNonCanonicalSummarySelections(recoverHWiNFOSensorSelection(replaceLegacyCpuCoreVid(replaceUnverifiedCpuBoardVoltage(restoreDetectedSummarySensors(restoreDetectedTemperatureSensors(recommendation, candidates), candidates), candidates), candidates), candidates), candidates, knownSensors);
+        const nextRecommendation = refreshSensorSelection(recommendation, candidates, knownSensors);
         if (nextRecommendation !== recommendation) setRecommendation(nextRecommendation);
       }
     }
-  }, [knownSensors, recommendation, selection, rawSensors]);
+  }, [knownSensors, recommendation, selection, rawSensors, metrics?.device?.storage]);
 
   useEffect(() => {
     if (selection === null) return;
@@ -439,7 +636,7 @@ function SystemSensorCard({ metrics }: { metrics: SystemMetrics | null }) {
   const toggleSensor = (sensor: SensorCardSensor, target: SensorSelectionTarget) => {
     setSelection((current) => {
       const base = current ?? defaultCardSensorSelection(sensors);
-      const ids = base[target].filter((id) => sensorById.get(id)?.available);
+      const ids = base[target].filter((id) => sensorById.has(id));
       if (ids.includes(sensor.id)) return { ...base, [target]: ids.filter((id) => id !== sensor.id) };
       const limit = target === "summary" ? SYSTEM_SENSOR_SUMMARY_LIMIT : SYSTEM_SENSOR_TEMPERATURE_LIMIT;
       return ids.length >= limit ? base : { ...base, [target]: [...ids, sensor.id] };
@@ -465,13 +662,13 @@ function SystemSensorCard({ metrics }: { metrics: SystemMetrics | null }) {
 
 function SystemSensorDialog({ mode, sensors, sources, selection, recommendationNotice, onClose, onToggle, onSaveRecommendation, onRestore }: { mode: "picker" | "details"; sensors: SensorCardSensor[]; sources: SystemMetrics["sources"] | undefined; selection: SystemSensorSelection; recommendationNotice: string | null; onClose: () => void; onToggle: (sensor: SensorCardSensor, target: SensorSelectionTarget) => void; onSaveRecommendation: () => void; onRestore: () => void }) {
   const title = mode === "picker" ? "选择传感器" : "传感器详情";
-  const detailSensorsByCategory = sensorCategories.map((category) => ({ category, sensors: sensors.filter((sensor) => sensor.available && sensor.category === category) })).filter((group) => group.sensors.length);
+  const detailSensorsByCategory = sensorCategories.map((category) => ({ category, sensors: sensors.filter((sensor) => sensor.category === category) })).filter((group) => group.sensors.length);
   const pickerSensors = sensors.filter((sensor) => isSummaryPickerSensor(sensor, sensors));
   const pickerSensorsByCategory = sensorCategories.map((category) => ({ category, sensors: sortPickerSensors(pickerSensors.filter((sensor) => sensor.category === category)) })).filter((group) => group.sensors.length);
   const renderChoice = (sensor: SensorCardSensor, target: SensorSelectionTarget) => {
     const selected = selection[target].includes(sensor.id);
     const limit = target === "summary" ? SYSTEM_SENSOR_SUMMARY_LIMIT : SYSTEM_SENSOR_TEMPERATURE_LIMIT;
-    return <label className={`tab-modal-v2__sensor-choice${sensor.available ? "" : " is-unavailable"}`} key={`${target}:${sensor.id}`}><input type="checkbox" checked={selected} disabled={!selected && selection[target].length >= limit} onChange={() => onToggle(sensor, target)} /><span><b>{sensor.label}</b><small>{formatSensorValue(sensor)} · {sensor.sourceLabel}</small></span></label>;
+    return <label className={`tab-modal-v2__sensor-choice${sensor.available ? "" : " is-unavailable"}`} key={`${target}:${sensor.id}`}><input type="checkbox" checked={selected} disabled={!selected && selection[target].length >= limit} onChange={() => onToggle(sensor, target)} /><span><b>{sensorDisplayLabel(sensor)}</b><small>{formatSensorValue(sensor)} · {sensor.sourceLabel}</small></span></label>;
   };
   const selectedCount = (groupSensors: SensorCardSensor[], target: SensorSelectionTarget) => groupSensors.filter((sensor) => selection[target].includes(sensor.id)).length;
   const renderPickerGroup = (group: { category: SystemSensorCategory; sensors: SensorCardSensor[] }) => {
@@ -486,7 +683,7 @@ function SystemSensorDialog({ mode, sensors, sources, selection, recommendationN
   return <div className="tab-modal-v2__sensor-dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <section id={mode === "picker" ? "obsui-sensor-picker" : "obsui-sensor-details"} className="tab-modal-v2__sensor-dialog" role="dialog" aria-modal="true" aria-label={title}>
       <header><div><span className="tab-modal-v2__sensor-dialog-icon"><IoPulseOutline aria-hidden="true" /></span><div><h2>{title}</h2><p>{mode === "picker" ? `摘要最多 ${SYSTEM_SENSOR_SUMMARY_LIMIT} 项，温度最多 ${SYSTEM_SENSOR_TEMPERATURE_LIMIT} 项；选择器按汇总口径过滤，完整原始读数请看传感器详情。` : "仅显示当前本机可读取的实时数据。"}</p></div></div><button type="button" autoFocus onClick={onClose} aria-label={`关闭${title}`} title={`关闭${title}`}><IoCloseOutline aria-hidden="true" /></button></header>
-      {mode === "picker" ? <><div className="tab-modal-v2__sensor-dialog-actions"><div><span>已选摘要 {selection.summary.length}/{SYSTEM_SENSOR_SUMMARY_LIMIT} · 温度 {selection.temperatures.length}/{SYSTEM_SENSOR_TEMPERATURE_LIMIT}</span>{recommendationNotice && <span className="tab-modal-v2__sensor-dialog-notice" role="status" aria-live="polite">{recommendationNotice}</span>}</div><div><button type="button" onClick={onSaveRecommendation}>设为推荐</button><button type="button" onClick={onRestore}>恢复推荐</button></div></div><div className="tab-modal-v2__sensor-dialog-body">{pickerSensorsByCategory.length ? pickerSensorsByCategory.map(renderPickerGroup) : <p className="tab-modal-v2__sensor-dialog-empty">未发现可选传感器。可运行 HWiNFO（启用共享内存）或 LibreHardwareMonitor 后重试。</p>}</div></> : <div className="tab-modal-v2__sensor-dialog-body"><div className="tab-modal-v2__sensor-source-state"><span>HWiNFO：{sources?.hwinfo ? "已连接" : "未连接（需启用共享内存）"}</span><span>硬件监测：{sources?.hardwareMonitor ?? "未检测到"}</span><span>NVIDIA：{sources?.nvidia ? "已连接" : "未检测到"}</span></div>{detailSensorsByCategory.length ? detailSensorsByCategory.map((group) => <section className="tab-modal-v2__sensor-group" key={group.category}><h3>{sensorCategoryLabels[group.category]}</h3><dl>{group.sensors.map((sensor) => <div key={sensor.id}><dt>{sensor.label}<small>{sensorSemanticLabel(sensor)} · {sensor.sourceLabel}</small></dt><dd>{formatSensorValue(sensor)}</dd></div>)}</dl></section>) : <p className="tab-modal-v2__sensor-dialog-empty">未发现传感器。请确认 HWiNFO 或本机性能监测服务正在运行。</p>}</div>}
+      {mode === "picker" ? <><div className="tab-modal-v2__sensor-dialog-actions"><div><span>已选摘要 {selection.summary.length}/{SYSTEM_SENSOR_SUMMARY_LIMIT} · 温度 {selection.temperatures.length}/{SYSTEM_SENSOR_TEMPERATURE_LIMIT}</span>{recommendationNotice && <span className="tab-modal-v2__sensor-dialog-notice" role="status" aria-live="polite">{recommendationNotice}</span>}</div><div><button type="button" onClick={onSaveRecommendation}>设为推荐</button><button type="button" onClick={onRestore}>恢复推荐</button></div></div><div className="tab-modal-v2__sensor-dialog-body">{pickerSensorsByCategory.length ? pickerSensorsByCategory.map(renderPickerGroup) : <p className="tab-modal-v2__sensor-dialog-empty">未发现可选传感器。可运行 HWiNFO（启用共享内存）或 LibreHardwareMonitor 后重试。</p>}</div></> : <div className="tab-modal-v2__sensor-dialog-body"><div className="tab-modal-v2__sensor-source-state"><span>HWiNFO：{sources?.hwinfo ? "已连接" : "未连接（需启用共享内存）"}</span><span>硬件监测：{sources?.hardwareMonitor ?? "未检测到"}</span><span>NVIDIA：{sources?.nvidia ? "已连接" : "未检测到"}</span></div>{detailSensorsByCategory.length ? detailSensorsByCategory.map((group) => <section className="tab-modal-v2__sensor-group" key={group.category}><h3>{sensorCategoryLabels[group.category]}</h3><dl>{group.sensors.map((sensor) => <div key={sensor.id}><dt>{sensorDisplayLabel(sensor)}<small>{sensorSemanticLabel(sensor)} · {sensor.sourceLabel}</small></dt><dd>{formatSensorValue(sensor)}</dd></div>)}</dl></section>) : <p className="tab-modal-v2__sensor-dialog-empty">未发现传感器。请确认 HWiNFO 或本机性能监测服务正在运行。</p>}</div>}
     </section>
   </div>;
 }
@@ -557,13 +754,16 @@ export function LocalPage({ nav, context }: { nav: string; context: V2BusinessCo
 }
 
 const localModelContextLabels: Record<LocalModelContextLength, string> = {
-  65536: "64K · 默认",
+  8192: "8K · 默认",
+  16384: "16K",
+  32768: "32K",
+  65536: "64K",
   131072: "128K · 长上下文",
   204800: "200K · 超长上下文",
 };
 const localModelOutputLabels: Record<LocalModelOutputLength, string> = {
-  4096: "4K",
-  8192: "8K · 默认",
+  4096: "4K · 默认",
+  8192: "8K",
   16384: "16K",
 };
 const localModelThinkingLabels: Record<LocalModelThinking, string> = {
@@ -578,7 +778,7 @@ function LocalModelSettingsPage({ context }: { context: V2BusinessContext }) {
   const [settings, setSettings] = useState<LocalModelSettings>(() => localModels.data.settings ?? DEFAULT_LOCAL_MODEL_SETTINGS);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
-  const selectedModelName = localModels.data.selectedModel ?? localModels.data.models[0]?.name ?? "qwen3.5:9b-64k";
+  const selectedModelName = localModels.data.selectedModel ?? localModels.data.models[0]?.name ?? DEFAULT_LOCAL_MODEL;
   const selectedThinking = localModelThinkingFor(settings, selectedModelName);
 
   useEffect(() => {
@@ -618,9 +818,9 @@ function LocalModelSettingsPage({ context }: { context: V2BusinessContext }) {
     <section className="tab-modal-v2__list-panel tab-modal-v2__local-model-settings" aria-label="本地模型设置">
       <div className="tab-modal-v2__section-heading"><div><b>本地模型参数</b><small>ObsUI 文献分析与 OpenCode Desktop 共用本机 Ollama；模型文件不会重复下载。</small></div></div>
       <div className="tab-modal-v2__local-model-status-grid">
-        <div><span>当前模型</span><b>{localModels.data.selectedModel ?? "qwen3.5:9b-64k"}</b></div>
+        <div><span>当前模型</span><b>{localModels.data.selectedModel ?? DEFAULT_LOCAL_MODEL}</b></div>
         <div><span>Ollama</span><b className={localModels.data.status === "ready" ? "is-ready" : "is-warning"}>{localModels.data.status === "ready" ? "在线" : "离线"}</b></div>
-        <div><span>模型仓库</span><b title={localModels.data.modelRoot}>{localModels.data.modelRoot ?? "C:\\AIModels"}</b></div>
+        <div><span>模型仓库</span><b title={localModels.data.modelRoot}>{localModels.data.modelRoot ?? "未读取"}</b></div>
         <div><span>OpenCode</span><b>Desktop · 本地 provider</b></div>
       </div>
       <form className="tab-modal-v2__local-model-form" onSubmit={(event) => void save(event)}>
@@ -634,7 +834,7 @@ function LocalModelSettingsPage({ context }: { context: V2BusinessContext }) {
         <label><span>Repeat penalty</span><input aria-label="Repeat penalty" type="number" min="0.8" max="2" step="0.05" value={settings.repeatPenalty} onChange={(event) => updateNumber("repeatPenalty", event.target.value)} /></label>
         <div className="tab-modal-v2__local-model-form-actions"><ActionButton type="submit" variant="primary" disabled={saving}>{saving ? "保存中…" : "保存本地参数"}</ActionButton>{notice && <span role="status" aria-live="polite">{notice}</span>}</div>
       </form>
-      <p className="tab-modal-v2__local-model-note">64K 是当前桌面编码默认档；128K 适合长文献/大仓库；200K 仅用于超长上下文，可能转为 GPU 与内存混合运行。OpenCode Desktop 的 `off / low / medium / high` 思考强度会显示在模型选择器中。</p>
+      <p className="tab-modal-v2__local-model-note">8K 是当前默认档；128K 适合长文献/大仓库；200K 仅用于超长上下文，可能转为 GPU 与内存混合运行。OpenCode Desktop 的 `off / low / medium / high` 思考强度会显示在模型选择器中。</p>
     </section>
   </div>;
 }

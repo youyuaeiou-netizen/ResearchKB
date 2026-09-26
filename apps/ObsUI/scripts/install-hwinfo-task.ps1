@@ -6,11 +6,12 @@ $ErrorActionPreference = 'Stop'
 $taskName = 'ObsUI HWiNFO'
 $obsUiRoot = Split-Path -Parent $PSScriptRoot
 $taskHost = Join-Path $env:SystemRoot 'System32\wscript.exe'
-$powerShellHost = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+$powerShellHost = Join-Path $PSHOME 'pwsh.exe'
 $taskRuntimeDirectory = Join-Path $env:ProgramData 'ObsUI\HWiNFO'
 $taskWrapperPath = Join-Path $taskRuntimeDirectory 'hwinfo-task-host.vbs'
 $taskCapabilityPath = Join-Path $taskRuntimeDirectory 'task-capabilities.json'
 $stateDirectory = Join-Path $obsUiRoot '.obsui-runtime\hwinfo'
+$ownerPath = Join-Path $stateDirectory 'hwinfo-owner.json'
 $resultDirectory = $stateDirectory
 $resultPath = Join-Path $resultDirectory 'hwinfo-task-install.json'
 $taskStatusPath = Join-Path $resultDirectory 'hwinfo-task-status.json'
@@ -36,14 +37,49 @@ trap {
 function Resolve-ObsUiHWiNFOExecutable {
     $programFiles = [Environment]::GetEnvironmentVariable('ProgramFiles')
     $programFilesX86 = [Environment]::GetEnvironmentVariable('ProgramFiles(x86)')
+    $existingTaskExecutable = $null
+    try {
+        $existingTask = Get-ScheduledTask -TaskName $taskName -ErrorAction Stop
+        $arguments = [string]$existingTask.Actions[0].Arguments
+        $encodedCommand = [regex]::Match($arguments, '[A-Za-z0-9+/=]+\s*$').Value.Trim()
+        if ($encodedCommand) {
+            $storedCommand = [Text.Encoding]::Unicode.GetString([Convert]::FromBase64String($encodedCommand))
+            $executableLine = $storedCommand -split "`r?`n" | Where-Object { $_.StartsWith('$executable = ' + [char]39) } | Select-Object -First 1
+            $executablePrefix = '$executable = ' + [char]39
+            if ($executableLine -and $executableLine.EndsWith([char]39)) {
+                $existingTaskExecutable = $executableLine.Substring($executablePrefix.Length).TrimEnd([char]39).Replace("''", "'")
+            }
+        }
+    }
+    catch { }
     $candidates = @(
         $env:OBSUI_HWINFO_PATH
+        $existingTaskExecutable
         if ($programFiles) { Join-Path $programFiles 'HWiNFO64\HWiNFO64.exe' }
         if ($programFilesX86) { Join-Path $programFilesX86 'HWiNFO64\HWiNFO64.exe' }
         if ($programFiles) { Join-Path $programFiles 'HWiNFO\HWiNFO64.exe' }
         if ($programFilesX86) { Join-Path $programFilesX86 'HWiNFO\HWiNFO64.exe' }
     ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) -and (Test-Path -LiteralPath $_ -PathType Leaf) }
     return $candidates | Select-Object -First 1
+}
+
+function Get-ObsUiOwnedHWiNFOProcess([int]$HWiNFOPid) {
+    try {
+        if ($HWiNFOPid -le 0 -or -not (Test-Path -LiteralPath $ownerPath -PathType Leaf)) { return $null }
+        $owner = Get-Content -LiteralPath $ownerPath -Raw -Encoding UTF8 | ConvertFrom-Json -DateKind String
+        $ownerHWiNFOPid = 0
+        if (-not [int]::TryParse([string]$owner.pid, [ref]$ownerHWiNFOPid) -or $ownerHWiNFOPid -ne $HWiNFOPid) { return $null }
+        $process = Get-Process -Id $HWiNFOPid -ErrorAction SilentlyContinue
+        if (-not $process -or @('HWiNFO64', 'HWiNFO32', 'HWiNFO') -notcontains $process.ProcessName) { return $null }
+        $ownerName = [string]$owner.processName
+        if ($ownerName -and $ownerName -ne $process.ProcessName) { return $null }
+        $ownerStart = [DateTimeOffset]::Parse([string]$owner.startedAt, [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::RoundtripKind).UtcDateTime
+        if ([Math]::Abs(($process.StartTime.ToUniversalTime() - $ownerStart).TotalSeconds) -gt 5) { return $null }
+        return $process
+    }
+    catch {
+        return $null
+    }
 }
 
 $executable = Resolve-ObsUiHWiNFOExecutable
@@ -54,7 +90,7 @@ if (-not (Test-Path -LiteralPath $taskHost -PathType Leaf)) {
     throw "找不到任务宿主：$taskHost"
 }
 if (-not (Test-Path -LiteralPath $powerShellHost -PathType Leaf)) {
-    throw "找不到 PowerShell：$powerShellHost"
+        throw "找不到 PowerShell 7：$powerShellHost"
 }
 if (-not (Test-Path -LiteralPath $resultDirectory -PathType Container)) {
     New-Item -ItemType Directory -Path $resultDirectory -Force | Out-Null
@@ -77,16 +113,37 @@ function Write-Status([string]$Status, [string]$Message = '', [int]$HWiNFOPid = 
     [ordered]@{
         status = $Status
         isAdministrator = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-        supportsStopAll = $true
+        supportsStopOwned = $true
         processId = $PID
         hwinfoPid = $HWiNFOPid
         message = $Message
         sampledAt = [DateTime]::UtcNow.ToString('o')
     } | ConvertTo-Json -Compress | Set-Content -LiteralPath $statusPath -Encoding UTF8
 }
-function Stop-AllObsUiHWiNFO {
-    Get-Process -Name 'HWiNFO64', 'HWiNFO32', 'HWiNFO' -ErrorAction SilentlyContinue |
-        Stop-Process -Force -ErrorAction SilentlyContinue
+function Get-ObsUiOwnedHWiNFOProcess([int]$HWiNFOPid) {
+    try {
+        if ($HWiNFOPid -le 0 -or -not (Test-Path -LiteralPath $ownerPath -PathType Leaf)) { return $null }
+        $owner = Get-Content -LiteralPath $ownerPath -Raw -Encoding UTF8 | ConvertFrom-Json -DateKind String
+        $ownerHWiNFOPid = 0
+        if (-not [int]::TryParse([string]$owner.pid, [ref]$ownerHWiNFOPid) -or $ownerHWiNFOPid -ne $HWiNFOPid) { return $null }
+        $process = Get-Process -Id $HWiNFOPid -ErrorAction SilentlyContinue
+        if (-not $process -or @('HWiNFO64', 'HWiNFO32', 'HWiNFO') -notcontains $process.ProcessName) { return $null }
+        $ownerName = [string]$owner.processName
+        if ($ownerName -and $ownerName -ne $process.ProcessName) { return $null }
+        $ownerStart = [DateTimeOffset]::Parse([string]$owner.startedAt, [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::RoundtripKind).UtcDateTime
+        if ([Math]::Abs(($process.StartTime.ToUniversalTime() - $ownerStart).TotalSeconds) -gt 5) { return $null }
+        return $process
+    }
+    catch {
+        return $null
+    }
+}
+function Stop-ObsUiOwnedHWiNFO([int]$HWiNFOPid) {
+    $ownedProcess = Get-ObsUiOwnedHWiNFOProcess $HWiNFOPid
+    if (-not $ownedProcess) { return $false }
+    Stop-Process -Id $ownedProcess.Id -Force -ErrorAction Stop
+    Remove-Item -LiteralPath $ownerPath -Force -ErrorAction SilentlyContinue
+    return $true
 }
 function Test-ObsUiOwnerProcessAlive([int]$HWiNFOPid) {
     try {
@@ -103,55 +160,132 @@ function Test-ObsUiOwnerProcessAlive([int]$HWiNFOPid) {
         return $true
     }
 }
+function Set-ObsUiHWiNFOStartupMode {
+    $iniPath = Join-Path (Split-Path -Parent $executable) (([System.IO.Path]::GetFileNameWithoutExtension($executable)) + '.INI')
+    $encoding = [System.Text.Encoding]::GetEncoding([Globalization.CultureInfo]::CurrentCulture.TextInfo.ANSICodePage)
+    $bom = [byte[]]@()
+    $text = ''
+    if (Test-Path -LiteralPath $iniPath -PathType Leaf) {
+        $bytes = [System.IO.File]::ReadAllBytes($iniPath)
+        if ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) {
+            $encoding = [System.Text.UTF8Encoding]::new($false)
+            $bom = [byte[]](0xEF, 0xBB, 0xBF)
+        }
+        elseif ($bytes.Length -ge 2 -and $bytes[0] -eq 0xFF -and $bytes[1] -eq 0xFE) {
+            $encoding = [System.Text.Encoding]::Unicode
+            $bom = [byte[]](0xFF, 0xFE)
+        }
+        elseif ($bytes.Length -ge 2 -and $bytes[0] -eq 0xFE -and $bytes[1] -eq 0xFF) {
+            $encoding = [System.Text.Encoding]::BigEndianUnicode
+            $bom = [byte[]](0xFE, 0xFF)
+        }
+        $text = $encoding.GetString($bytes, $bom.Length, $bytes.Length - $bom.Length)
+    }
+    $newline = if ($text.Contains("`r`n")) { "`r`n" } elseif ($text.Contains("`n")) { "`n" } elseif ($text.Contains("`r")) { "`r" } else { "`r`n" }
+    $hasFinalNewline = $text.EndsWith("`n") -or $text.EndsWith("`r")
+    $lines = [System.Collections.Generic.List[string]]::new()
+    if ($text.Length -gt 0) {
+        foreach ($line in [regex]::Split($text, "`r`n|`n|`r")) { $lines.Add($line) }
+        if ($hasFinalNewline -and $lines.Count -gt 0 -and $lines[$lines.Count - 1] -eq '') { $lines.RemoveAt($lines.Count - 1) }
+    }
+    $settingsIndex = -1
+    for ($index = 0; $index -lt $lines.Count; $index++) {
+        if ($lines[$index] -match '^\s*\[Settings\]\s*$') { $settingsIndex = $index; break }
+    }
+    $settingsEndIndex = $lines.Count
+    if ($settingsIndex -ge 0) {
+        for ($index = $settingsIndex + 1; $index -lt $lines.Count; $index++) {
+            if ($lines[$index] -match '^\s*\[[^\]]+\]\s*$') { $settingsEndIndex = $index; break }
+        }
+    }
+    $updated = [System.Collections.Generic.List[string]]::new()
+    if ($settingsIndex -lt 0) {
+        $updated.Add('[Settings]')
+        $updated.Add('SensorsOnly=1')
+        $updated.Add('MinimalizeSensors=1')
+        foreach ($line in $lines) { $updated.Add($line) }
+    }
+    else {
+        for ($index = 0; $index -lt $settingsIndex; $index++) { $updated.Add($lines[$index]) }
+        $updated.Add($lines[$settingsIndex])
+        for ($index = $settingsIndex + 1; $index -lt $settingsEndIndex; $index++) {
+            if ($lines[$index] -notmatch '^\s*(?:SensorsOnly|MinimalizeSensors)\s*=') { $updated.Add($lines[$index]) }
+        }
+        $updated.Add('SensorsOnly=1')
+        $updated.Add('MinimalizeSensors=1')
+        for ($index = $settingsEndIndex; $index -lt $lines.Count; $index++) { $updated.Add($lines[$index]) }
+    }
+    $output = [string]::Join($newline, $updated)
+    if ($hasFinalNewline) { $output += $newline }
+    if ($output -ceq $text) { return }
+    $contentBytes = $encoding.GetBytes($output)
+    $outputBytes = [byte[]]::new($bom.Length + $contentBytes.Length)
+    if ($bom.Length -gt 0) { [Array]::Copy($bom, 0, $outputBytes, 0, $bom.Length) }
+    if ($contentBytes.Length -gt 0) { [Array]::Copy($contentBytes, 0, $outputBytes, $bom.Length, $contentBytes.Length) }
+    [System.IO.File]::WriteAllBytes($iniPath, $outputBytes)
+}
 try {
-    $stopAllPending = $false
+    $pendingRequest = $null
     if (Test-Path -LiteralPath $stopRequestPath -PathType Leaf) {
         try {
             $pendingRequest = Get-Content -LiteralPath $stopRequestPath -Raw -Encoding UTF8 | ConvertFrom-Json
-            $stopAllPending = [bool]$pendingRequest.all
         }
         catch { }
     }
-    if (-not $stopAllPending) {
+    if ($pendingRequest) {
+        $pendingPid = 0
+        if (-not [int]::TryParse([string]$pendingRequest.pid, [ref]$pendingPid) -and ([bool]$pendingRequest.all -or [bool]$pendingRequest.stopOwned)) {
+            try {
+                $owner = Get-Content -LiteralPath $ownerPath -Raw -Encoding UTF8 | ConvertFrom-Json
+                [void][int]::TryParse([string]$owner.pid, [ref]$pendingPid)
+            }
+            catch { }
+        }
+        if ($pendingPid -gt 0 -and (Stop-ObsUiOwnedHWiNFO $pendingPid)) {
+            Remove-Item -LiteralPath $stopRequestPath -Force -ErrorAction SilentlyContinue
+            Write-Status 'closed' '' $pendingPid
+            exit 0
+        }
         Remove-Item -LiteralPath $stopRequestPath -Force -ErrorAction SilentlyContinue
-    }
-    if ($stopAllPending) {
-        Stop-AllObsUiHWiNFO
-        Remove-Item -LiteralPath $stopRequestPath -Force -ErrorAction SilentlyContinue
-        Remove-Item -LiteralPath $ownerPath -Force -ErrorAction SilentlyContinue
-        Write-Status 'closed'
-        exit 0
+        if ([bool]$pendingRequest.stopOwned -or [bool]$pendingRequest.all -or $pendingPid -gt 0) {
+            Write-Status 'closed'
+            exit 0
+        }
     }
     Write-Status 'launching'
-    $process = Start-Process -FilePath $executable -WorkingDirectory (Split-Path -Parent $executable) -WindowStyle Hidden -PassThru
-    Write-Status 'running' '' $process.Id
-    $stopAllRequested = $false
+    $startupModeWarning = ''
+    try { Set-ObsUiHWiNFOStartupMode } catch { $startupModeWarning = "HWiNFO 启动模式未能写入配置：$($_.Exception.Message)" }
+    # Keep the sensors-only window minimized. Its INI startup setting places it
+    # in the notification area; WindowStyle is a fallback if the INI is locked.
+    $process = Start-Process -FilePath $executable -WorkingDirectory (Split-Path -Parent $executable) -WindowStyle Minimized -PassThru
+    Write-Status 'running' $startupModeWarning $process.Id
+    $stopRequested = $false
     while (-not $process.HasExited) {
         if (Test-Path -LiteralPath $stopRequestPath -PathType Leaf) {
             try {
                 $request = Get-Content -LiteralPath $stopRequestPath -Raw -Encoding UTF8 | ConvertFrom-Json
-                if ([bool]$request.all) {
-                    Stop-AllObsUiHWiNFO
-                    $stopAllRequested = $true
+                if ([bool]$request.stopOwned -or [bool]$request.all) {
+                    Stop-Process -Id $process.Id -Force -ErrorAction Stop
+                    $stopRequested = $true
                 }
                 elseif ([int]$request.pid -eq $process.Id) {
-                    Stop-Process -Id $process.Id -Force -ErrorAction Stop
+                    $stopRequested = Stop-ObsUiOwnedHWiNFO $process.Id
                 }
             }
             catch { }
             Remove-Item -LiteralPath $stopRequestPath -Force -ErrorAction SilentlyContinue
         }
-        if ($stopAllRequested) { break }
+        if ($stopRequested) { break }
         if (-not $process.HasExited -and -not (Test-ObsUiOwnerProcessAlive $process.Id)) {
             # Vite can be terminated before its HTTP close hook runs. Once the
-            # owner process is gone, the user-requested policy is to close all
-            # HWiNFO instances, including ones started outside ObsUI.
+            # owner process is gone, this task stops only the HWiNFO process
+            # that this same task launched.
             try {
-                Stop-AllObsUiHWiNFO
-                $stopAllRequested = $true
+                Stop-Process -Id $process.Id -Force -ErrorAction Stop
+                $stopRequested = $true
             }
             catch { }
-            if ($stopAllRequested) { break }
+            if ($stopRequested) { break }
         }
         Start-Sleep -Milliseconds 250
         $process.Refresh()
@@ -212,8 +346,8 @@ if ($existingTask -and $existingTask.State -eq 'Running') {
     Start-Sleep -Milliseconds 500
     $previousPid = 0
     if ($previousTaskStatus -and [int]::TryParse([string]$previousTaskStatus.hwinfoPid, [ref]$previousPid) -and $previousPid -gt 0) {
-        $previousProcess = Get-Process -Id $previousPid -ErrorAction SilentlyContinue
-        if ($previousProcess -and @('HWiNFO64', 'HWiNFO32', 'HWiNFO') -contains $previousProcess.ProcessName) {
+        $previousProcess = Get-ObsUiOwnedHWiNFOProcess $previousPid
+        if ($previousProcess) {
             Stop-Process -Id $previousPid -Force -ErrorAction Stop
         }
     }
@@ -222,7 +356,7 @@ Remove-Item -LiteralPath $taskStatusPath -Force -ErrorAction SilentlyContinue
 $action = New-ScheduledTaskAction -Execute $taskHost -Argument $taskArguments -WorkingDirectory $PSScriptRoot
 $principal = New-ScheduledTaskPrincipal -UserId ([Security.Principal.WindowsIdentity]::GetCurrent().User.Value) -LogonType Interactive -RunLevel Highest
 $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew
-$task = New-ScheduledTask -Action $action -Principal $principal -Settings $settings -Description '按需为 ObsUI 无窗口启动 HWiNFO 传感器；不设置自动触发器。'
+$task = New-ScheduledTask -Action $action -Principal $principal -Settings $settings -Description '按需为 ObsUI 启动 HWiNFO 传感器；隐藏 PowerShell 宿主；不设置自动触发器。'
 Register-ScheduledTask -TaskName $taskName -InputObject $task -Force | Out-Null
 
 $beforeIds = @(Get-Process -Name 'HWiNFO64', 'HWiNFO32', 'HWiNFO' -ErrorAction SilentlyContinue | ForEach-Object Id)
@@ -254,7 +388,7 @@ if ($beforeIds.Count -eq 0) {
 
 Remove-Item -LiteralPath (Join-Path $resultDirectory 'hwinfo-retry.json') -Force -ErrorAction SilentlyContinue
 [ordered]@{
-    supportsStopAll = $true
+    supportsStopOwned = $true
     installedAt = [DateTime]::UtcNow.ToString('o')
 } | ConvertTo-Json -Compress | Set-Content -LiteralPath $taskCapabilityPath -Encoding UTF8
 [ordered]@{

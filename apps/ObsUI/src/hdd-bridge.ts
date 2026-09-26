@@ -8,7 +8,8 @@ import { basename, extname, isAbsolute, join, relative, resolve, sep, win32 } fr
 import { promisify } from "node:util";
 import type { Plugin } from "vite";
 import { getCodexModels, type CodexModel } from "./codex-model-catalog";
-import { DEFAULT_OLLAMA_MODEL, HDD_PROVIDERS, HDD_REASONING_EFFORTS, hddReasoningEfforts, hddRuntimeModelLabel, isCodexModelId, isHddProviderId, isSafeHddModelName, sortHddRuntimeModels, type HddCliProfile, type HddModelId, type HddProviderId, type HddReasoningEffort } from "./hdd-models";
+import { DEFAULT_OLLAMA_CONTEXT_LENGTH, DEFAULT_OLLAMA_MODEL, HDD_PROVIDERS, HDD_REASONING_EFFORTS, hddReasoningEfforts, hddRuntimeModelLabel, isCodexModelId, isHddProviderId, isSafeHddModelName, sortHddRuntimeModels, type HddCliProfile, type HddModelId, type HddProviderId, type HddReasoningEffort } from "./hdd-models";
+import { writeTextAtomically } from "./atomic-file";
 
 export { HDD_PROVIDERS, HDD_REASONING_EFFORTS } from "./hdd-models";
 export type { HddModelId, HddProviderId, HddReasoningEffort } from "./hdd-models";
@@ -639,7 +640,7 @@ export async function completeHddPrompt(prompt: string, options: HddCompletionOp
         stream: false,
         keep_alive: keepAlive,
         ...(outputFormat ? { format: outputFormat } : {}),
-        ...(maxOutputTokens ? { options: { temperature: 0, top_p: 0.9, num_predict: maxOutputTokens } } : {}),
+        options: { temperature: 0, top_p: 0.9, num_ctx: DEFAULT_OLLAMA_CONTEXT_LENGTH, ...(maxOutputTokens ? { num_predict: maxOutputTokens } : {}) },
         ...(reasoningEffort ? { think: reasoningEffort === "off" ? false : reasoningEffort } : {}),
       }),
       signal: AbortSignal.timeout(completionTimeoutMs),
@@ -699,9 +700,8 @@ async function loadConversation(chatRoot: string, id: string): Promise<HddConver
 }
 
 async function saveConversation(chatRoot: string, conversation: HddConversation) {
-  await mkdir(chatRoot, { recursive: true });
   const path = conversationPath(chatRoot, conversation.id);
-  await writeFile(path, JSON.stringify({ ...conversation, messages: conversation.messages.slice(-maxConversationMessages) }, null, 2), "utf8");
+  await writeTextAtomically(path, JSON.stringify({ ...conversation, messages: conversation.messages.slice(-maxConversationMessages) }, null, 2));
 }
 
 async function listConversations(chatRoot: string) {
@@ -759,7 +759,7 @@ async function streamOllamaMessage(context: StreamContext, model: string, reason
     const result = await fetch(`${ollamaEndpoint}/api/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model, messages: [{ role: "user", content: context.prompt }], stream: true, ...(reasoningEffort ? { think: reasoningEffort === "off" ? false : reasoningEffort } : {}) }),
+      body: JSON.stringify({ model, messages: [{ role: "user", content: context.prompt }], stream: true, options: { num_ctx: DEFAULT_OLLAMA_CONTEXT_LENGTH }, ...(reasoningEffort ? { think: reasoningEffort === "off" ? false : reasoningEffort } : {}) }),
       signal: abortController.signal,
     });
     if (!result.ok || !result.body) throw new Error(`Ollama 返回 ${result.status}。`);

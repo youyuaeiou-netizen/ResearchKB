@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { IoAddOutline, IoAlertCircleOutline, IoBookOutline, IoCheckmarkCircleOutline, IoCubeOutline, IoDocumentTextOutline, IoFolderOpenOutline, IoGitBranchOutline, IoRefreshOutline, IoSearchOutline, IoTrashOutline } from "react-icons/io5";
 import { redactRemoteUrl, type GitStatusResponse, type GitStatusSnapshot, type RepositoryEntry, type RepositoryKind } from "../repositories";
 import { ActionButton } from "./ActionButton";
-import { ObsidianWorkspace } from "./ObsidianWorkspace";
 import { RepositoryGraph } from "./RepositoryGraph";
 import type { V2BusinessContext } from "./model";
+
+const ObsidianWorkspace = lazy(() => import("./ObsidianWorkspace").then(({ ObsidianWorkspace }) => ({ default: ObsidianWorkspace })));
 
 type RepositoryFilter = "all" | RepositoryKind;
 type RepositoryForm = { kind: RepositoryKind; name: string; localPath: string; remoteUrl: string; note: string };
@@ -236,12 +237,12 @@ export function RepositoryPageV2({ context }: { context: V2BusinessContext }) {
       setActiveObsidianVaultId(vaultId);
     }}
   /></div>;
-  if (activeObsidianVault) return <div className="tab-modal-v2__repository-page is-obsidian"><ObsidianWorkspace
+  if (activeObsidianVault) return <div className="tab-modal-v2__repository-page is-obsidian"><Suspense fallback={<div role="status" aria-live="polite">正在打开 Obsidian 工作区…</div>}><ObsidianWorkspace
     vault={activeObsidianVault}
     initialNotePath={initialObsidianNotePath}
     onOpenGraph={(currentNotePath) => { if (currentNotePath) setInitialObsidianNotePath(currentNotePath); setGraphOpen(true); }}
     onClose={() => { setActiveObsidianVaultId(null); setInitialObsidianNotePath(null); }}
-  /></div>;
+  /></Suspense></div>;
 
   return <div className="tab-modal-v2__repository-page">
     <aside className="tab-modal-v2__repository-sidebar" aria-label="仓库分类">

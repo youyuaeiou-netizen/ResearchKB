@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { academicGlossaryTranslation, detachZoteroRecord, extractAuthorCandidates, extractDoiCandidate, extractPdfText, findLiteratureDuplicates, groupLiteratureModels, importIdempotencyKey, literatureDoiUrl, literatureExternalUrl, literatureFolderNameFromRelativePath, markAnalysisFailed, markSourceFileMissing, modelSelectionFromRuntimeTag, normalizeLiteratureAnalysis, normalizeRecord, normalizeSettings, parseTranslationModelOutput, renderPdfPages, restoredLiteratureStatus, sanitizeLiteratureFileName, sanitizeLiteratureFolderName, sourceDirectoryPath, statusAfterMissingFile, statusAfterZoteroDeletion, toZoteroCreators, updateRecordForFile, zoteroDeleteHeaders, zoteroFileUploadHeaders } from "../src/literature-server";
+import { academicGlossaryTranslation, coalesceLocalLiteratureRecords, detachZoteroRecord, extractAuthorCandidates, extractDoiCandidate, extractPdfText, findLiteratureDuplicates, groupLiteratureModels, ignoreDuplicateLiteratureRecords, importIdempotencyKey, literatureDoiUrl, literatureExternalUrl, literatureFolderNameFromRelativePath, markAnalysisFailed, markSourceFileMissing, mergeDuplicateLiteratureRecords, modelSelectionFromRuntimeTag, normalizeLiteratureAnalysis, normalizeRecord, normalizeSettings, parsePdfByteRange, parseTranslationModelOutput, reconcileLiteratureRecords, renderPdfPages, restoredLiteratureStatus, sanitizeLiteratureFileName, sanitizeLiteratureFolderName, shouldSkipLiteratureFileHash, sourceDirectoryPath, statusAfterMissingFile, statusAfterZoteroDeletion, toZoteroCreators, unifyLiteratureRecords, updateRecordForFile, zoteroDeleteHeaders, zoteroFileUploadHeaders } from "../src/literature-server";
 import type { LiteratureSelectionTranslationRequest } from "../src/literature";
 
 const source = {
@@ -74,6 +74,7 @@ describe("文献后端边界", () => {
     expect(families).toHaveLength(2);
     expect(families.find((family) => family.name === "qwen3.5:9b")?.profiles.map((profile) => profile.profile)).toEqual(["64k", "128k"]);
     expect(families.find((family) => family.name === "qwen3.5:4b")?.profiles.map((profile) => profile.profile)).toEqual(["default"]);
+    expect(groupLiteratureModels([{ name: "qwen3.5:9b", size: 1, modifiedAt: 1 }])[0]?.profiles.map((profile) => profile.profile)).toEqual(["default"]);
     expect(normalizeSettings({ modelFamily: "qwen3.5:4b", modelProfile: "default", runtimeTag: "qwen3.5:4b" })).toMatchObject({ modelFamily: "qwen3.5:4b", modelProfile: "default", runtimeTag: "qwen3.5:4b" });
   });
 
@@ -291,13 +292,232 @@ describe("文献后端边界", () => {
     expect(stillDeferred?.record.status).toBe("ignored");
   });
 
-  it("uses DOI, then persisted hash, then title-year-first-author matching", () => {
+  it("coalesces legacy local records by the same SHA-256 and stores secondary paths relatively", () => {
+    const first = normalizeRecord({
+      id: "local-hash-a",
+      sourcePath: "C:\\legacy-library\\papers\\same.pdf",
+      relativePath: "papers/same.pdf",
+      fileName: "same.pdf",
+      sha256: source.sha256,
+      title: source.title,
+      authors: source.authors,
+      year: source.year,
+      status: "ready",
+      analysisSource: "text",
+    });
+    const second = normalizeRecord({
+      id: "local-hash-b",
+      sourcePath: "D:\\another-copy\\same.pdf",
+      relativePath: "archive/same.pdf",
+      fileName: "same.pdf",
+      sha256: source.sha256,
+      title: source.title,
+      authors: source.authors,
+      year: source.year,
+      status: "ready",
+      analysisSource: "text",
+    });
+
+    const merged = coalesceLocalLiteratureRecords([first!, second!]);
+    expect(merged).toHaveLength(1);
+    expect(merged[0]?.localCopies.map((copy) => copy.relativePath)).toEqual(["archive/same.pdf"]);
+    expect(merged[0]?.recordAliases).toContain("local-hash-b");
+    expect(JSON.stringify(merged[0]?.localCopies)).not.toContain("C:");
+    expect(JSON.stringify(merged[0]?.localCopies)).not.toContain("D:");
+    const legacy = normalizeRecord({
+      id: "local-old-schema",
+      sourcePath: "C:\\legacy-library\\paper.pdf",
+      relativePath: "paper.pdf",
+      fileName: "paper.pdf",
+      sha256: source.sha256,
+      localCopies: [
+        { relativePath: "C:\\machine-only\\private.pdf", folderName: "", fileName: "private.pdf", size: 1, mtimeMs: 1, sha256: source.sha256 },
+        { relativePath: "..\\outside\\private.pdf", folderName: "", fileName: "private.pdf", size: 1, mtimeMs: 1, sha256: source.sha256 },
+      ],
+    });
+    expect(legacy?.localCopies).toEqual([]);
+
+    const uncertainA = normalizeRecord({ ...first, id: "local-title-a", sourcePath: "C:\\papers\\one.pdf", relativePath: "one.pdf", sha256: "c".repeat(64), doi: null });
+    const uncertainB = normalizeRecord({ ...second, id: "local-title-b", sourcePath: "C:\\papers\\two.pdf", relativePath: "two.pdf", sha256: "d".repeat(64), doi: null });
+    expect(coalesceLocalLiteratureRecords([uncertainA!, uncertainB!])).toHaveLength(2);
+  });
+
+  it("shows at most two local files while preserving the other associations", () => {
+    const record = normalizeRecord({
+      id: "local-many-copies",
+      sourcePath: "C:\\papers\\main.pdf",
+      relativePath: "papers/main.pdf",
+      fileName: "main.pdf",
+      sha256: source.sha256,
+      localCopies: [1, 2, 3, 4].map((index) => ({
+        relativePath: `archive/copy-${index}.pdf`,
+        fileName: `copy-${index}.pdf`,
+        sha256: source.sha256,
+        size: 10,
+        mtimeMs: index,
+        sourceAvailability: "present",
+      })),
+    });
+
+    expect(record?.localCopies).toHaveLength(4);
+    expect(unifyLiteratureRecords([record!], [], null)[0]?.localFiles).toHaveLength(2);
+  });
+
+  it("links local and Zotero sources by a unique exact DOI and presents one literature item", () => {
+    const local = normalizeRecord({
+      id: "local-doi",
+      sourcePath: "C:\\papers\\same.pdf",
+      relativePath: "papers/same.pdf",
+      fileName: "same.pdf",
+      sha256: source.sha256,
+      title: source.title,
+      authors: source.authors,
+      year: source.year,
+      doi: "https://doi.org/10.1000/EXAMPLE",
+      status: "ready",
+      analysisSource: "text",
+    });
+    const zoteroItems = [{ key: "ZOTERO01", version: 1, meta: {}, data: { itemType: "journalArticle", title: source.title, DOI: "10.1000/example", creators: [], date: "2024" } }];
+    const reconciled = reconcileLiteratureRecords([local!], zoteroItems, "server-1");
+    const unified = unifyLiteratureRecords(reconciled, zoteroItems, "server-1");
+
+    expect(reconciled[0]?.zotero).toMatchObject({ serverId: "server-1", itemKey: "ZOTERO01" });
+    expect(unified).toHaveLength(1);
+    expect(unified[0]).toMatchObject({ id: "local-doi", source: "merged", zoteroItemKey: "ZOTERO01" });
+  });
+
+  it("links a local PDF to its unique Zotero parent by the attachment MD5", () => {
+    const local = normalizeRecord({
+      id: "local-attachment-hash",
+      sourcePath: "C:\\papers\\same.pdf",
+      relativePath: "papers/same.pdf",
+      fileName: "same.pdf",
+      sha256: source.sha256,
+      md5: "e".repeat(32),
+      title: "Local filename metadata",
+      authors: [],
+      year: 2024,
+      doi: null,
+      status: "ready",
+    });
+    const zoteroItems = [
+      { key: "ZOTERO02", version: 1, meta: {}, data: { itemType: "journalArticle", title: "Zotero parent", creators: [], date: "2024" } },
+      { key: "ATTACH02", version: 1, meta: {}, data: { itemType: "attachment", parentItem: "ZOTERO02", contentType: "application/pdf", filename: "same.pdf", md5: "e".repeat(32) } },
+    ];
+
+    const candidates = findLiteratureDuplicates(local!, zoteroItems);
+    const reconciled = reconcileLiteratureRecords([local!], zoteroItems, "server-1");
+    const unified = unifyLiteratureRecords(reconciled, zoteroItems, "server-1");
+
+    expect(candidates).toMatchObject([{ itemKey: "ZOTERO02", reason: "hash" }]);
+    expect(reconciled[0]?.zotero).toMatchObject({ itemKey: "ZOTERO02", attachmentKey: "ATTACH02" });
+    expect(unified).toHaveLength(1);
+    expect(unified[0]).toMatchObject({ source: "merged", zoteroItemKey: "ZOTERO02" });
+  });
+
+  it("rehashes unchanged legacy PDFs when their MD5 has not been backfilled", () => {
+    const file = { size: 120, mtimeMs: 1_700_000_000_000 };
+    const existing = normalizeRecord({
+      id: "local-missing-md5",
+      sourcePath: "C:\\papers\\same.pdf",
+      relativePath: "papers/same.pdf",
+      fileName: "same.pdf",
+      sha256: source.sha256,
+      size: file.size,
+      mtimeMs: file.mtimeMs,
+      md5: null,
+      sourceAvailability: "present",
+      status: "ready",
+    })!;
+
+    expect(shouldSkipLiteratureFileHash(existing.status, existing, file, false)).toBe(false);
+    expect(shouldSkipLiteratureFileHash(existing.status, { ...existing, md5: "e".repeat(32) }, file, false)).toBe(true);
+  });
+
+  it("keeps ambiguous identical attachments in the suspected duplicate state", () => {
+    const local = normalizeRecord({
+      id: "local-ambiguous-attachment-hash",
+      sourcePath: "C:\\papers\\same.pdf",
+      relativePath: "papers/same.pdf",
+      fileName: "same.pdf",
+      sha256: source.sha256,
+      md5: "f".repeat(32),
+      title: "Local filename metadata",
+      authors: [],
+      year: null,
+      doi: null,
+      status: "ready",
+    });
+    const zoteroItems = ["ZOTERO03", "ZOTERO04"].flatMap((key) => [
+      { key, version: 1, meta: {}, data: { itemType: "journalArticle", title: `Parent ${key}` } },
+      { key: `ATTACH-${key}`, version: 1, meta: {}, data: { itemType: "attachment", parentItem: key, contentType: "application/pdf", filename: "same.pdf", md5: "f".repeat(32) } },
+    ]);
+
+    const reconciled = reconcileLiteratureRecords([local!], zoteroItems, "server-1");
+
+    expect(reconciled[0]).toMatchObject({ status: "conflict", duplicateCandidates: [{ itemKey: "ZOTERO03" }, { itemKey: "ZOTERO04" }] });
+    expect(reconciled[0]?.zotero).toBeNull();
+  });
+
+  it("parses PDF byte ranges including suffix and open-ended requests", () => {
+    expect(parsePdfByteRange("bytes=4-9", 20)).toEqual({ start: 4, end: 9 });
+    expect(parsePdfByteRange("bytes=15-", 20)).toEqual({ start: 15, end: 19 });
+    expect(parsePdfByteRange("bytes=-5", 20)).toEqual({ start: 15, end: 19 });
+    expect(parsePdfByteRange("bytes=18-99", 20)).toEqual({ start: 18, end: 19 });
+    expect(parsePdfByteRange(undefined, 20)).toBeNull();
+    expect(parsePdfByteRange("bytes=20-", 20)).toBe("invalid");
+    expect(parsePdfByteRange("bytes=0-1,3-4", 20)).toBe("invalid");
+  });
+
+  it("does not auto-link by title when both records have conflicting DOIs", () => {
+    const candidates = findLiteratureDuplicates({ ...source, doi: "10.1000/local" }, [
+      { key: "DIFFDOI1", version: 1, meta: {}, data: { itemType: "journalArticle", title: source.title, DOI: "10.1000/other", creators: [{ creatorType: "author", firstName: "Ada", lastName: "Lovelace" }], date: "2024" } },
+    ]);
+    expect(candidates).toEqual([]);
+  });
+
+  it("prioritizes exact DOI, then persisted hash, then title-year-first-author matching", () => {
     const candidates = findLiteratureDuplicates(source, [
       { key: "DOI00001", version: 1, meta: {}, data: { itemType: "journalArticle", title: "Other", DOI: "10.1000/example", creators: [], date: "2020" } },
       { key: "HASH0001", version: 1, meta: {}, data: { itemType: "journalArticle", title: "Copied PDF", extra: "ObsUI-Source-SHA256: " + "a".repeat(64), creators: [], date: "2022" } },
       { key: "TITLE001", version: 1, meta: {}, data: { itemType: "journalArticle", title: source.title, creators: [{ creatorType: "author", firstName: "Ada", lastName: "Lovelace" }], date: "2024" } },
     ]);
-    expect(candidates.map((candidate) => candidate.reason)).toEqual(["doi", "hash", "title-author"]);
+    expect(candidates.map((candidate) => candidate.reason)).toEqual(["doi"]);
+    const hashMatches = findLiteratureDuplicates({ ...source, doi: null }, [
+      { key: "HASH0001", version: 1, meta: {}, data: { itemType: "journalArticle", title: "Copied PDF", extra: "ObsUI-Source-SHA256: " + "a".repeat(64), creators: [], date: "2022" } },
+      { key: "TITLE001", version: 1, meta: {}, data: { itemType: "journalArticle", title: source.title, creators: [{ creatorType: "author", firstName: "Ada", lastName: "Lovelace" }], date: "2024" } },
+    ]);
+    expect(hashMatches.map((candidate) => candidate.reason)).toEqual(["hash"]);
+    const titleMatches = findLiteratureDuplicates({ ...source, doi: null }, [
+      { key: "TITLE001", version: 1, meta: {}, data: { itemType: "journalArticle", title: source.title, creators: [{ creatorType: "author", firstName: "Ada", lastName: "Lovelace" }], date: "2024" } },
+    ]);
+    expect(titleMatches.map((candidate) => candidate.reason)).toEqual(["title-author"]);
+  });
+
+  it("applies duplicate merge and ignore batches atomically and rejects stale repeats", () => {
+    const conflictRecord = (id: string, itemKey: string) => normalizeRecord({
+      id,
+      sourcePath: `C:\\papers\\${id}.pdf`,
+      relativePath: `papers/${id}.pdf`,
+      fileName: `${id}.pdf`,
+      sha256: "b".repeat(64),
+      status: "conflict",
+      duplicateCandidates: [{ itemKey, title: "Existing Zotero paper", authors: [], year: 2024, doi: source.doi, score: 1, reason: "doi" }],
+    })!;
+    const zoteroItems = [
+      { key: "ZOTERO01", version: 1, meta: {}, data: { itemType: "journalArticle", title: "Existing Zotero paper" } },
+      { key: "ZOTERO02", version: 1, meta: {}, data: { itemType: "journalArticle", title: "Existing Zotero paper" } },
+    ];
+    const initial = [conflictRecord("local-merge", "ZOTERO01"), conflictRecord("local-ignore", "ZOTERO02")];
+    const merged = mergeDuplicateLiteratureRecords(initial, [{ id: "local-merge", itemKey: "ZOTERO01" }], "server-1", zoteroItems);
+    expect(merged[0]).toMatchObject({ status: "matched", zotero: { serverId: "server-1", itemKey: "ZOTERO01" }, duplicateCandidates: [] });
+    expect(() => mergeDuplicateLiteratureRecords(merged, [{ id: "local-merge", itemKey: "ZOTERO01" }], "server-1", zoteroItems)).toThrow("状态已变化");
+
+    const ignored = ignoreDuplicateLiteratureRecords(initial, ["local-ignore"]);
+    expect(ignored[1]).toMatchObject({ status: "ignored", ignoredReason: "manual" });
+    expect(() => ignoreDuplicateLiteratureRecords(ignored, ["local-ignore"])).toThrow("状态已变化");
+    expect(() => ignoreDuplicateLiteratureRecords(initial, ["local-ignore", "missing-id"])).toThrow("状态已变化");
+    expect(initial[1]?.status).toBe("conflict");
   });
 
   it("keeps import idempotency stable for one Zotero server and source hash", () => {

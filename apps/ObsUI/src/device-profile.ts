@@ -17,6 +17,7 @@ export type DeviceGpu = {
 
 export type DeviceStorage = {
   model: string;
+  deviceId?: string | null;
   sizeBytes: number | null;
   type: string | null;
   interfaceType: string | null;
@@ -119,6 +120,7 @@ function parseStorage(value: unknown): DeviceStorage | null {
   if (!model) return null;
   return {
     model,
+    deviceId: readText(record?.deviceId, 120),
     sizeBytes: readNumber(record?.sizeBytes, 0, 2 ** 60),
     type: readText(record?.type, 80),
     interfaceType: readText(record?.interfaceType, 80),
